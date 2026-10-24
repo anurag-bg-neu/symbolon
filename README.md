@@ -98,24 +98,18 @@ The same credential could support community premarital screening (the model Dor 
 
 ## Team plan (internal, remove before final submission)
 
-**Two milestones:** PSI working in tests by **12:30**; two-browser demo by **15:30**. If we fall behind, cut the trial flow; the couple flow alone is a complete project.
+**Milestones (re-planned at 11:52):** PSI working in tests by **14:00**; two-browser demo by **16:30**; feature freeze **18:00**; submitted by **19:30** (deadline 20:00). If the two-browser demo isn't working at 16:30, cut the trial flow; the couple flow alone is a complete project.
 
-| Time | Work |
-|---|---|
-| 9:00–10:30 | Crypto core and tests (verify `rbcl` first) |
-| 10:30–11:15 | Gene panel, lab service, demo seed data |
-| 11:15–12:30 | PSI protocol end to end in tests |
-| 13:15–14:00 | Relay service |
-| 14:00–15:30 | Wallet service and UI |
-| 15:30–16:30 | AI counselor |
-| 16:30–17:15 | Trial eligibility: per-claim signing, verifier page |
-| 17:15–18:30 | README, demo video, submit (deadline 20:00) |
+| Time | P1: crypto and protocol | P2: backend services | P3: frontend, agent, story |
+|---|---|---|---|
+| 12:00–13:15 | Skeleton, rbcl check, `core/models.py`, crypto core and tests | Relay service | Gene panel (by 12:45), counselor template fallback |
+| 13:15–14:00 | PSI protocol end to end in tests | Lab service, demo seed data | Counselor: Bedrock adapter and tests |
+| 14:00–16:30 | Adversarial tests, then pair on wallet integration | Wallet service, `run_demo.sh` | Wallet UI, transparency panel |
+| 16:30–18:00 | Claim signing and verification, trial tests | Trial service, wallet `/present` | `trials.json`, verifier page |
+| 18:00–19:15 | Threat model, S1–S3 notes, timing check | Optional relay deploy, fresh-clone test | README, demo GIF, video |
+| 19:15–19:30 | Push, verify on GitHub, submit (all) | | |
 
-**Suggested roles for 3–4 people:**
-- **Crypto and protocol:** `core/`, adversarial tests, threat model
-- **Backend:** lab and relay services, seed data, run script
-- **Frontend and demo:** wallet UI, transparency panel, trial verifier page, demo video
-- **Agent and story:** counselor agent, gene panel facts, README, pitch
+Full task split and handoff times: [`.kiro/specs/genematch/tasks.md`](.kiro/specs/genematch/tasks.md).
 
 **Submission checklist:**
 - [ ] `.kiro/` committed (Kiro use is required)

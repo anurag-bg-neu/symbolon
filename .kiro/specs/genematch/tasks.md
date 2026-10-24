@@ -1,62 +1,128 @@
 # Implementation Plan
 
-Time boxes assume a 9:00 start, with a feature freeze at 17:00 and submission by 20:00.
+Re-planned at 11:52 with no code written yet (the original plan assumed a 9:00 start). Three people work in parallel from 12:00. Feature freeze at 18:00, submitted by 19:30, hard deadline 20:00.
 
-- [ ] 1. Project skeleton and crypto core (9:00–10:30)
-  - [ ] 1.1 Create the repository layout from `structure.md`, plus `pyproject.toml` with fastapi, uvicorn, rbcl, pynacl>=1.6, pydantic, httpx, and pytest
+## Owners
+
+| Tag | Role | Owns (folders) |
+|---|---|---|
+| **P1** | Crypto and protocol | `core/`, `tests/test_crypto*.py`, `tests/test_protocol*.py`, claim signing and verification logic |
+| **P2** | Backend services | `relay/`, `lab/`, `wallet/service.py`, `trial/service.py`, `scripts/` |
+| **P3** | Frontend, agent, story | `data/`, `agent/`, `wallet/static/`, `trial/static/`, `README.md`, demo video |
+
+Stay inside your folders. Shared files (`core/models.py`, `pyproject.toml`) change only after a heads-up in chat.
+
+## Timeline
+
+| Time | P1 (crypto) | P2 (backend) | P3 (frontend, agent, story) |
+|---|---|---|---|
+| 12:00–12:20 | 1.1, 1.2: skeleton, `pyproject.toml`, rbcl check, `core/models.py`; push | Read design.md relay section | 2.1: start `data/panel.json` |
+| 12:20–13:15 | 1.3, 1.4: crypto core and tests | 4.1–4.3: relay (payloads are opaque, so no crypto needed) | 2.1: finish panel; push by 12:45. Then 6.1: template fallback |
+| 13:15–14:00 | 3.1, 3.2: protocol and couple tests (fixture lab key in `tests/conftest.py`) | 2.2, 2.3: lab keys, issuance, lab service, seed script | 6.1–6.3: Bedrock adapter, `explain()`, tests |
+| **14:00** | **Milestone A: PSI end to end in pytest** | | |
+| 14:00–14:45 | 3.3: adversarial tests | 5.1: wallet endpoints and relay polling | 5.2: UI screens against mocks of the design.md wallet API |
+| 14:45–16:00 | Pair with P2 on 5.1: `Session` in the wallet, scalar zeroing, error messages | 5.1 continued, 5.4: `run_demo.sh` | 5.2, 5.3: screens, transparency panel, banner |
+| 16:00–16:30 | Integration and bug fixing, all three | | |
+| **16:30** | **Milestone B: two-browser demo. Gate: if not green, cut Task 7 and everyone polishes the couple flow** | | |
+| 16:30–18:00 | 7.2 (claim signing in lab), presentation verify in `core/`, 7.6 tests | 7.1, 7.4, 7.5: holder key, trial service, wallet `/present` | 7.3, 7.7: `trials.json`, verifier page, "Trial saw: 1 claim" |
+| **18:00** | **Feature freeze** | | |
+| 18:00–19:15 | 8.2, 8.3: S1–S3 notes, threat model table, timing check | 8.1 (optional deploy), fresh-clone install test | 9.1, 9.2: README, demo GIF, 60–90 s video |
+| 19:15–19:30 | 9.3 all: push, verify on GitHub, submit on SundAI | | |
+
+## Handoffs (the producer pushes by this time)
+
+All interfaces are fixed in `design.md` ("Components and interfaces" and "Data models"), so nobody waits on a conversation. A handoff only means the real code replaces your mock.
+
+| Time | From → To | What |
+|---|---|---|
+| 12:20 | P1 → all | Repo skeleton, `pyproject.toml`, `core/models.py` with every model in design.md |
+| 12:45 | P3 → P2 | `data/panel.json` |
+| 13:15 | P1 → P2 | `core/crypto.py` and `core/issuance.py` |
+| 14:00 | P2 → P1, P3 | `var/wallets/*.json` from `seed_demo.py`; wallet endpoints returning the design.md shapes (P3 mocks them until then) |
+| 16:30 | P1 → P2 | `core/claims.py` with `verify_presentation()` |
+
+## Tasks
+
+- [ ] 1. Project skeleton and crypto core — **P1**, 12:00–13:15
+  - [ ] 1.1 Create the repository layout from `structure.md`, `pyproject.toml` with fastapi, uvicorn, rbcl, pynacl>=1.6, pydantic, httpx, boto3, and pytest, and `core/models.py` with every model in the design.md "Data models" table
+    - _Requirements: none (setup)_
   - [ ] 1.2 Verify that `rbcl` installs and exposes the ristretto255 bindings (`from_hash`, `scalarmult`, `scalar_random`, `is_valid_point`); if not, switch to `pysodium`, then to `openmined-psi` as a last resort
-  - [ ] 1.3 Implement `core/crypto.py`: `hash_to_group`, `random_scalar`, `mul`, `blind_set`, `commit_tokens`, `commit_blinded`, `canon`
-  - [ ] 1.4 Write unit tests for commutativity, domain separation, invalid and identity point rejection, and commitment determinism
-  - _Requirements: 1.1, 1.2, 5.1, 5.4_
+    - _Requirements: none (setup)_
+  - [ ] 1.3 Implement `core/crypto.py`: `hash_to_group`, `random_scalar`, `mul`, `blind_set`, `commit_tokens`, `commit_blinded`, `canon`, `sign`, `verify`, with the prefixes in design.md
+    - _Requirements: 1.1, 1.2, 4.1, 5.1, 5.4_
+  - [ ] 1.4 Write unit tests for commutativity, domain separation, invalid and identity point rejection, commitment determinism, and signatures (valid, tampered, wrong key)
+    - _Requirements: 1.1, 1.2, 4.3, 5.4_
 
-- [ ] 2. Gene panel and lab service (10:30–11:15)
-  - [ ] 2.1 Write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC), each with a condition, a one-line summary, and a MedlinePlus link
-  - [ ] 2.2 Implement `lab/service.py`: key generation, `POST /credentials`, `GET /pubkey`, the `MAX_SET` cap, and the panel and inheritance check
-  - [ ] 2.3 Write `scripts/seed_demo.py` to issue credentials for the three demo couples (one shared gene, none shared, two shared)
-  - _Requirements: 1.1–1.5, 7.2_
+- [ ] 2. Gene panel and lab service
+  - [ ] 2.1 **P3**, 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
+    - _Requirements: 1.3, 6.1_
+  - [ ] 2.2 **P2**, 13:15–13:45: implement `lab/keys.py` (`load_or_create`), `core/issuance.py` (`issue`, with panel, AR, `MAX_SET`, and `CLAIM_GENES` checks), and `lab/service.py` (`POST /credentials`, `GET /pubkey`)
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+  - [ ] 2.3 **P2**, 13:45–14:00: write `scripts/seed_demo.py` (in-process, no HTTP) to issue credentials for the three demo couples in design.md and write `var/wallets/<person_id>.json`
+    - _Requirements: 7.2_
 
-- [ ] 3. Protocol engine, terminal-only (11:15–12:30) — **milestone: PSI works end to end in pytest**
-  - [ ] 3.1 Implement `core/protocol.py`: `Session`, rounds 0–2, `verify_peer`, and `result` for both modes
-  - [ ] 3.2 Write protocol tests for all three couples in both modes
-  - [ ] 3.3 Write adversarial tests: inflated set, forged token, commitment mismatch, bad signature
-  - _Requirements: 4.1–4.3, 5.1–5.7, 3.4_
+- [ ] 3. Protocol engine, terminal-only — **P1**, 13:15–14:45 — **milestone A at 14:00: PSI works end to end in pytest**
+  - [ ] 3.1 Implement `core/protocol.py`: `Session`, rounds 0–2, `verify_peer`, `result` for both modes, and `zero()`
+    - _Requirements: 3.4, 4.1, 4.3, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
+  - [ ] 3.2 Write protocol tests for all three couples in both modes (fixture lab key in `tests/conftest.py`, using `core.issuance.issue`)
+    - _Requirements: 3.4, 5.5, 5.6, 7.2_
+  - [ ] 3.3 Write adversarial tests: inflated set, forged token, commitment mismatch, bad signature, replayed round-1 message
+    - _Requirements: 4.3, 5.3, 5.4_
 
-- [ ] 4. Relay service (13:15–14:00)
-  - [ ] 4.1 Implement sessions, invite codes, join (rejecting a third participant), accept and decline, and 24-hour expiry
-  - [ ] 4.2 Implement round storage with commit-then-reveal release rules
+- [ ] 4. Relay service — **P2**, 12:20–13:15
+  - [ ] 4.1 Implement sessions, invite codes, join (409 for a third participant), accept, decline, fail, state, and 24-hour deletion
+    - _Requirements: 2.1, 2.2, 2.5, 3.3_
+  - [ ] 4.2 Implement round storage with the release rules in design.md
+    - _Requirements: 2.3, 4.2_
   - [ ] 4.3 Implement the transparency log (hex prefixes only) at `GET /sessions/{id}/log`
-  - _Requirements: 2.1–2.5, 3.1–3.3, 4.2, 7.1_
+    - _Requirements: 7.1_
 
-- [ ] 5. Wallet service and UI (14:00–15:30) — **milestone: two-browser demo**
-  - [ ] 5.1 Wallet endpoints: start, join, status, and seen; the relay polling loop; scalar zeroing on completion or abort
-  - [ ] 5.2 UI screens: home (credential summary), start check (mode choice and invite code), join (mode explanation, then accept), waiting, result
-  - [ ] 5.3 Build the "What did everyone see?" panel and the synthetic-data banner
-  - [ ] 5.4 Write `scripts/run_demo.sh` to start the lab, relay, and both wallets
-  - _Requirements: 2.4, 3.1–3.3, 5.6, 7.1, 7.4_
+- [ ] 5. Wallet service and UI — 14:00–16:30 — **milestone B at 16:30: two-browser demo**
+  - [ ] 5.1 **P2** (P1 pairs from 14:45): wallet endpoints from the design.md table (`/me`, `/check/*`), the 500 ms relay polling loop, the in-process counselor call, and scalar zeroing on completion or abort
+    - _Requirements: 2.4, 3.2, 5.6, 5.7_
+  - [ ] 5.2 **P3**: UI screens: home (credential summary from `/me`), start check (mode choice and invite code), join (mode explanation, then accept or decline), waiting, result with explanation
+    - _Requirements: 2.4, 3.1, 3.2, 3.3_
+  - [ ] 5.3 **P3**: build the "What did everyone see?" panel from `/check/seen`, and the synthetic-data banner
+    - _Requirements: 7.1, 7.4_
+  - [ ] 5.4 **P2**: write `scripts/run_demo.sh` to start the lab, relay, trial service, and both wallets for `COUPLE=1|2|3`
+    - _Requirements: none (tooling)_
 
-- [ ] 6. Counselor agent (15:30–16:30)
-  - [ ] 6.1 Write the Bedrock adapter and system prompt, with a deterministic template fallback
-  - [ ] 6.2 Implement `explain()` for both modes, plus counselor questions
-  - [ ] 6.3 Write tests: the Count-mode prompt contains no gene names, and the fallback meets all required statements
-  - _Requirements: 6.1–6.7_
+- [ ] 6. Counselor agent — **P3**, 12:45–14:00
+  - [ ] 6.1 Write the deterministic template fallback first, then the Bedrock Converse adapter and system prompt (env `BEDROCK_MODEL_ID`, `AWS_REGION`, 10-second timeout)
+    - _Requirements: 6.5, 6.7_
+  - [ ] 6.2 Implement `build_prompt()` and `explain()` for both modes, plus 3–5 counselor questions and output validation
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
+  - [ ] 6.3 Write tests: the Count-mode prompt contains no gene or condition names, and the fallback meets all required statements in both the shared and none-shared cases
+    - _Requirements: 6.2, 6.3, 6.4, 6.7_
 
-- [ ] 7. Trial eligibility (16:30–17:15, cut first if behind)
-  - [ ] 7.1 Wallet holder key: generate at setup, send the public key to the lab
-  - [ ] 7.2 Lab: issue per-finding signed claims with salt and holder public key; extend the seed script so demo people have BRCA1 or BRCA2 findings
-  - [ ] 7.3 Write `data/trials.json` with two demo trials
-  - [ ] 7.4 Implement `trial/service.py`: requests with nonces, presentation verification, verifier page
-  - [ ] 7.5 Wallet: `POST /present` with an approval prompt that names the single finding shared
-  - [ ] 7.6 Tests: valid presentation, tampered claim, wrong holder key, reused nonce, expired nonce, wrong gene
-  - [ ] 7.7 Add "Trial saw: 1 claim" to the transparency panel
-  - _Requirements: 8.1–8.7_
+- [ ] 7. Trial eligibility — 16:30–18:00, **only if milestone B is green at 16:30**
+  - [ ] 7.1 **P2**: seed script generates one holder key per person, passes the public key to `issue`, and writes the seed only to that wallet's file
+    - _Requirements: 8.1_
+  - [ ] 7.2 **P1**: per-finding signed claims in `core/issuance.py` (salt, holder public key, `genematch/v1/claim/` signature) and `core/claims.py` (`claim_hash`, `make_presentation`, `verify_presentation`)
+    - _Requirements: 8.1, 8.3, 8.5_
+  - [ ] 7.3 **P3**: write `data/trials.json` with two demo trials (one BRCA1, one BRCA2), in the design.md shape
+    - _Requirements: 8.2_
+  - [ ] 7.4 **P2**: implement `trial/service.py`: `/trials`, `/requests`, `GET /requests/{id}`, `/present`, the nonce store with 5-minute expiry, and serving the verifier page
+    - _Requirements: 8.2, 8.5, 8.6_
+  - [ ] 7.5 **P2**: wallet `GET /present/pending` and `POST /present`, following the trial request flow in design.md; tell the user and send nothing if no claim matches
+    - _Requirements: 8.3, 8.4_
+  - [ ] 7.6 **P1**: tests: valid presentation, tampered claim, wrong holder key, reused nonce, expired nonce, wrong gene, and the wallet sends exactly one claim
+    - _Requirements: 8.3, 8.5, 8.6_
+  - [ ] 7.7 **P3**: verifier page (trial picker, wallet links, status polling), the wallet approval prompt naming the single finding, and "Trial saw: 1 claim" in the transparency panel
+    - _Requirements: 8.3, 8.5, 8.7_
 
-- [ ] 8. Polish and stretch (17:15–17:30, cut freely)
-  - [ ] 8.1 Optional: deploy the relay to AWS (App Runner or Lambda)
-  - [ ] 8.2 Optional: design notes for S1, S2, and S3 in the README
-  - [ ] 8.3 Check timing: a full check takes under 3 seconds of compute
-  - _Requirements: 7.3_
+- [ ] 8. Polish and stretch — 18:00–19:15, cut freely
+  - [ ] 8.1 **P2**, optional: deploy the relay to AWS (App Runner or Lambda)
+    - _Requirements: none (stretch)_
+  - [ ] 8.2 **P1**, optional: design notes for S1, S2, and S3 in the README
+    - _Requirements: none (stretch)_
+  - [ ] 8.3 **P1**: check timing: a full check takes under 3 seconds of compute
+    - _Requirements: 7.3_
 
-- [ ] 9. Submission (17:30–18:30)
-  - [ ] 9.1 README: the two-line pitch, a demo GIF in the first screen, how to run, the threat model table, residual risks, and prior art (Baldi et al. 2011; authorized PSI)
-  - [ ] 9.2 Record a 60–90 second demo video: two windows, a shared-carrier result, the transparency panel, the counselor, then the same credential proving trial eligibility
-  - [ ] 9.3 Confirm `.kiro/` is committed, push to GitHub, verify on GitHub, and submit on SundAI with the track set to Biotech & Healthcare
+- [ ] 9. Submission — 18:00–19:30
+  - [ ] 9.1 **P3** (P1 writes the threat model table and residual risks): README: the two-line pitch, a demo GIF in the first screen, how to run, the threat model table, residual risks, and prior art (Baldi et al. 2011; authorized PSI)
+    - _Requirements: none (submission)_
+  - [ ] 9.2 **P3**: record a 60–90 second demo video: two windows, a shared-carrier result, the transparency panel, the counselor, then the same credential proving trial eligibility
+    - _Requirements: none (submission)_
+  - [ ] 9.3 **All**, 19:15–19:30: confirm `.kiro/` is committed, remove the README "Team plan" section, push to GitHub, verify on GitHub, and submit on SundAI with the track set to Biotech & Healthcare
+    - _Requirements: none (submission)_
