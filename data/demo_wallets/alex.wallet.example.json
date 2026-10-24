@@ -1,0 +1,30 @@
+{
+  "person_id": "alex",
+  "genes": ["CFTR", "GBA", "PAH"],
+  "credential": {
+    "person_id": "alex",
+    "tokens": [
+      "<redacted 32-byte Ristretto point for CFTR>",
+      "<redacted 32-byte Ristretto point for GBA>",
+      "<redacted 32-byte Ristretto point for PAH>"
+    ],
+    "count": 3,
+    "commitment": "<redacted SHA-256 commitment>",
+    "issued_at": "<UTC timestamp>",
+    "lab_sig": "<redacted Ed25519 signature>",
+    "commit_salt": "<redacted 16-byte salt>"
+  },
+  "claims": [
+    {
+      "person_id": "alex",
+      "gene": "BRCA1",
+      "finding": "germline pathogenic variant",
+      "salt": "<redacted 16-byte salt>",
+      "holder_pubkey": "<redacted Ed25519 public key>",
+      "issued_at": "<UTC timestamp>",
+      "lab_sig": "<redacted Ed25519 signature>"
+    }
+  ],
+  "holder_seed": "<private; generated only in var/wallets/alex.json>",
+  "lab_pubkey": "<redacted Ed25519 public key>"
+}
