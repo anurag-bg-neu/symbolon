@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "crypto-rules-guard",
+      "trigger": "PostFileSave",
+      "description": "Reviews saved core Python files against the repository's non-negotiable cryptographic rules and reports violations without modifying code.",
+      "matcher": "(?:^|/)core/.*\\.py$",
+      "action": {
+        "type": "agent",
+        "prompt": "Act as the repository's crypto-rules guard for the just-saved file under core/. Read the changed file and treat .kiro/steering/tech.md as the authoritative source of cryptographic rules. Review the changed file, relevant call sites when needed, and tests/ for all of the following:\n\n1. Gene points are computed only as H(g) = crypto_core_ristretto255_from_hash(SHA-512(b\"genematch/v1/gene/\" + gene_id)).\n2. Cryptographic scalars come only from crypto_core_ristretto255_scalar_random(), never from random, secrets, os.urandom, or hardcoded values.\n3. Every point received from another party is validated with crypto_core_ristretto255_is_valid_point, and the identity point is rejected.\n4. PSI operates only on lab tokens T_g = k_lab · H(g), never directly on raw H(g).\n5. No secret scalar, lab key, or token is logged, printed, or included in an error message.\n6. Every crypto function has both a positive and a negative test in tests/.\n\nDo not modify any file and do not apply a fix silently. For every violation, report the file path, line number, the broken rule, and a concrete proposed fix. If there are no violations, reply with exactly one line and nothing else: crypto-rules-guard: pass"
+      }
+    }
+  ]
+}
