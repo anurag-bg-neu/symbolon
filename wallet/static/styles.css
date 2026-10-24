@@ -44,7 +44,9 @@ a { color: var(--accent); }
   margin: 0 auto;
   padding: 18px 24px;
 }
-.brand { font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+.brand { font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em;
+  display: inline-flex; align-items: center; gap: 9px; }
+.brand .logo { width: 28px; height: 28px; flex: none; }
 
 /* Slim app navigation */
 .appnav { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; margin-left: 16px; }
