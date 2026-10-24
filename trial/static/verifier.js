@@ -5,6 +5,7 @@
   var WALLETS = ["http://localhost:8101", "http://localhost:8102"];
   var POLL_MS = 1000;
   var timer = null;
+  var countdown = null;
 
   function $(id) { return document.getElementById(id); }
   function el(tag, text, cls) {
@@ -56,6 +57,8 @@
 
   function render(st) {
     $("status").hidden = false;
+    $("status").className = "card status-" + st.status;
+    if (st.status !== "pending" && countdown) { window.clearInterval(countdown); countdown = null; }
     var text = st.status === "pending" ? "Waiting for the patient to approve…"
       : st.status === "eligible" ? "Eligible — verified by lab"
       : "Not verified: " + (st.reason || "the presentation was rejected.");
@@ -85,7 +88,16 @@
     getJSON("POST", "/requests", { trial_id: chosen.value }).then(function (req) {
       $("request").hidden = false;
       $("req-what").textContent = "Asking for: " + req.gene + ", " + req.finding + ".";
-      $("req-expiry").textContent = "This request works once and expires at " + req.expires_at + ".";
+      var expires = Date.parse(req.expires_at);
+      var tickExpiry = function () {
+        var s = Math.max(0, Math.round((expires - Date.now()) / 1000));
+        $("req-expiry").textContent = s
+          ? "This request works once and expires in " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + "."
+          : "This request has expired. Create a new one.";
+      };
+      if (countdown) window.clearInterval(countdown);
+      if (isNaN(expires)) $("req-expiry").textContent = "This request works once and expires at " + req.expires_at + ".";
+      else { tickExpiry(); countdown = window.setInterval(tickExpiry, 1000); }
       $("link-a").href = WALLETS[0] + "/#present=" + req.request_id;
       $("link-b").href = WALLETS[1] + "/#present=" + req.request_id;
       $("req-title").focus();
