@@ -92,7 +92,7 @@ def shown(st: dict, mode: str):
 async def main() -> int:
     seed_demo.seed()
     pub = json.loads((keys.var_dir() / "wallets" / "alex.json").read_text())["lab_pubkey"]
-    print("GeneMatch backend demo (synthetic data, not medical advice)")
+    print("Symbolon backend demo (synthetic data, not medical advice)")
     print(f"Lab public key: {pub[:16]}...\n")
 
     for n, (a, b) in seed_demo.COUPLES.items():

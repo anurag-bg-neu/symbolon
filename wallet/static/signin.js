@@ -7,7 +7,7 @@
   function next() {
     // Keep a pending trial request or lab return across sign-in.
     var h = window.location.hash;
-    var ok = /^#present=[0-9a-f]{32}$/.test(h) || /^#connect(=[0-9a-f]{32}|-declined)$/.test(h);
+    var ok = /^#present=[0-9a-f]{32}$/.test(h);
     return "/app" + (ok ? h : "");
   }
 

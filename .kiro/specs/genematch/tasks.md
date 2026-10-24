@@ -133,6 +133,16 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
   - [x] 10.7 Visual polish and motion (system fonts, one accent, reduced-motion, phone width)
     - _Requirements: 13.1–13.3_
 
+- [x] 11. Lab portal, one-line invites, short privacy panel — **P3** (built by P1)
+  - [x] 11.1 Lab portal identity (deep violet, own mark and header), lab credentials `<person>@demolab.test`, consent "Send your carrier results to your GeneMatch wallet?"; tests
+    - _Requirements: 9.1_
+  - [x] 11.2 One-time `state` bound to the wallet session; lab redirects to `/connect/callback`; "Results added", decline, and error messages; tests for full flow, decline, invalid/reused/other-session/expired state
+    - _Requirements: 9.1, 9.12_
+  - [x] 11.3 One-line invite messages, grouped code, "What does this mean?", inviter name through the relay; tests
+    - _Requirements: 10.4, 3.2_
+  - [x] 11.4 Three-line privacy summary with "Show technical details" closed by default; tests
+    - _Requirements: 10.3_
+
 - [ ] 8. Polish and stretch — 18:00–19:15, cut freely
   - [ ] 8.1 **P2**, optional: deploy the relay to AWS (App Runner or Lambda)
     - _Requirements: none (stretch)_

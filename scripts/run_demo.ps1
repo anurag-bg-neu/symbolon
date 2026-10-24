@@ -1,4 +1,4 @@
-# Start the GeneMatch demo on Windows: relay :8000, wallets :8101 (partner A) and
+# Start the Symbolon demo on Windows: relay :8000, wallets :8101 (partner A) and
 # :8102 (partner B), lab :8200, trial verifier :8300.
 # Usage (from the repo root):  .\scripts\run_demo.ps1 [-Couple 1|2|3] [-Empty alex,jordan]
 #   -Empty starts those wallets with no results (re-seeds every wallet).

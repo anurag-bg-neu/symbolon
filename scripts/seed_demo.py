@@ -111,14 +111,14 @@ def seed(var: Path | None = None, empty: list[str] | tuple[str, ...] = ()) -> li
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Seed synthetic GeneMatch demo wallets.")
+    ap = argparse.ArgumentParser(description="Seed synthetic Symbolon demo wallets.")
     ap.add_argument("--empty", action="append", default=[], metavar="PERSON",
                     choices=sorted(RECORDS), help="start this wallet with no results")
     args = ap.parse_args(argv)
     for p in seed(empty=args.empty):
         print(f"wrote {p}" + (" (empty)" if p.stem in args.empty else ""))
     print("Wallet sign-in: <person>@genematch.demo / demo-<person> (synthetic data)")
-    print("Lab sign-in:    <person>@lab.genematch.demo / lab-<person>, "
+    print("Lab sign-in:    <person>@demolab.test / lab-<person>, "
           f"staff {lab_auth.STAFF_EMAIL} / {lab_auth.STAFF_PASSWORD}")
     return 0
 

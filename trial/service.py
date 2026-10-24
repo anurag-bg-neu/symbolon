@@ -66,7 +66,7 @@ def _fetch_lab_pubkey() -> str:
 
 def create_app(lab_pubkey: str | None = None,
                clock: Callable[[], float] = time.time) -> FastAPI:
-    app = FastAPI(title="GeneMatch trial verifier")
+    app = FastAPI(title="Symbolon trial verifier")
     requests: dict[str, dict[str, Any]] = {}
     lab_key: dict[str, str | None] = {"value": lab_pubkey}
     app.state.requests = requests  # lets tests inspect the store
@@ -147,7 +147,7 @@ def create_app(lab_pubkey: str | None = None,
     else:
         @app.get("/", response_class=HTMLResponse)
         def placeholder() -> str:
-            return ("<!doctype html><title>GeneMatch trial verifier</title>"
+            return ("<!doctype html><title>Symbolon trial verifier</title>"
                     "<p><strong>Demo with synthetic data. Not medical advice.</strong></p>"
                     "<p>Verifier page not built yet. API: <code>GET /trials</code>, "
                     "<code>POST /requests</code>.</p>")

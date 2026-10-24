@@ -1,4 +1,4 @@
-/* GeneMatch: calm and spacious. Blues and greys with one accent, no alarm colours.
+/* Symbolon: calm and spacious. Blues and greys with one accent, no alarm colours.
    Text contrast is at least 4.5:1. Motion is subtle and off under reduced motion. */
 :root {
   --bg: #fbfbfd;
@@ -45,6 +45,20 @@ a { color: var(--accent); }
   padding: 18px 24px;
 }
 .brand { font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+
+/* Slim app navigation */
+.appnav { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; margin-left: 16px; }
+.appnav button {
+  font: inherit; font-size: 0.95rem; background: none; border: 0; cursor: pointer;
+  color: var(--muted); padding: 6px 12px; border-radius: 999px;
+}
+.appnav button:hover { color: var(--ink); background: #f0f0f3; }
+.appnav button[aria-current="page"] { color: var(--accent); background: var(--soft); font-weight: 600; }
+.appnav button:focus-visible { outline: 3px solid #f0b429; outline-offset: 2px; }
+@media (max-width: 640px) {
+  .top { flex-wrap: wrap; }
+  .appnav { order: 3; width: 100%; margin: 4px 0 0; }
+}
 .who-wrap { display: flex; align-items: center; gap: 12px; }
 .who { color: var(--muted); font-size: 0.95rem; }
 
@@ -102,9 +116,19 @@ p { margin: 0 0 12px; }
 
 fieldset { border: 0; padding: 0; margin: 0 0 8px; }
 legend { font-weight: 600; margin-bottom: 10px; }
-.option { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; }
-.option input { margin-top: 5px; }
-.option label { display: flex; flex-direction: column; cursor: pointer; font-weight: 400; }
+/* Mode options: the whole box is the label; the chosen box is highlighted. */
+label.option {
+  display: flex; gap: 14px; align-items: center;
+  margin: 0 0 10px; padding: 16px 18px;
+  border: 1.5px solid var(--line); border-radius: 14px;
+  font-weight: 400; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+label.option:hover { border-color: var(--accent); }
+label.option input { margin: 0; width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+label.option:has(input:checked) { border-color: var(--accent); background: var(--soft); }
+label.option:has(input:focus-visible) { outline: 3px solid #f0b429; outline-offset: 2px; }
+.option-text { display: flex; flex-direction: column; gap: 2px; }
 
 label { font-weight: 600; display: block; margin: 12px 0 6px; }
 input[type=email], input[type=password], input[type=text] {
@@ -162,6 +186,20 @@ input[type=email], input[type=password], input[type=text] {
 .sr-only-file { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .sr-only-file:focus-visible + * , .dropzone:focus-within { outline: 3px solid #f0b429; outline-offset: 3px; }
 
+/* One-line invite messages and the "What does this mean?" expander */
+.one-line { margin: 0 0 4px; }
+.code-inline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+  background: var(--soft);
+  border-radius: 8px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+details.explain { margin-top: 12px; }
+details.explain > summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; font-weight: 600; width: fit-content; }
+.explain-body { margin-top: 8px; padding-left: 12px; border-left: 3px solid var(--soft); }
+
 /* Progress steps */
 .steps { list-style: none; padding: 0; margin: 14px 0; display: grid; gap: 10px; }
 .step { border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; }
@@ -175,9 +213,11 @@ input[type=email], input[type=password], input[type=text] {
 .result .mode { background: var(--soft); border-radius: 12px; padding: 10px 14px; }
 .result .answer { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; margin: 16px 0 8px; }
 
-/* Privacy details */
-details.privacy > summary { font-weight: 700; font-size: 1.1rem; cursor: pointer; list-style-position: inside; }
-details.privacy[open] > summary { margin-bottom: 12px; }
+/* Privacy details: three plain lines, technical transcript behind a toggle */
+.privacy-lines { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
+.privacy-lines li::before { content: "•  "; color: var(--accent); font-weight: 700; }
+details.tech > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 0.95rem; width: fit-content; }
+details.tech[open] > summary { margin-bottom: 12px; }
 .parties { display: grid; gap: 12px; }
 .party { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
 .party h3 { margin-top: 0; }

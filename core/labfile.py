@@ -18,7 +18,7 @@ from core.models import Credential, ProtocolError, SignedClaim
 FORMAT = "genematch-lab-file/v1"
 
 MESSAGES = {
-    "NOT_LAB_FILE": "This isn't a GeneMatch lab file. Nothing was changed.",
+    "NOT_LAB_FILE": "This isn't a Symbolon lab file. Nothing was changed.",
     "MALFORMED_FILE": "This lab file is damaged or incomplete. Nothing was changed.",
     "NOT_SIGNED": "This file isn't signed by the lab, so it can't be used. Nothing was changed.",
     "TAMPERED": "This file was changed after the lab signed it, so it can't be used. "

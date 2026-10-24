@@ -94,10 +94,53 @@ def test_plain_language_steps_and_privacy_details_collapsed():
     for step in ("Sealing your list", "Exchanging scrambled lists", "Comparing"):
         assert step in app_js
     assert "Checking privately…" in app_js and '"Done."' in app_js
-    assert 'el("details", "card privacy")' in privacy and "Privacy details" in privacy
+    assert "Privacy details" in privacy and 'el("details", "tech")' in privacy
+    assert "Show technical details" in privacy
     assert ".open = true" not in privacy and "open: true" not in privacy  # closed by default
     assert "What did everyone see?" in privacy
     assert "window.GeneMatchPrivacy" in app_js
+
+
+def test_privacy_summary_lines_are_plain_and_honest():
+    privacy = (ROOT / "wallet" / "static" / "privacy.js").read_text("utf-8")
+    for line in ('"Your partner saw: " + values + " and your lab-signed count"',
+                 '"The server saw: scrambled values and your wallet\'s ID, never a gene name"',
+                 '"Your genes never left this device"'):
+        assert line in privacy
+    # The three summary lines (outside the technical toggle) use no jargon.
+    summary = privacy[privacy.index("function summaryLines"):privacy.index("function render")]
+    for word in JARGON:
+        assert not re.search(rf"\b{word}\b", summary, re.IGNORECASE), word
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js not installed")
+def test_privacy_summary_counts_what_was_sent():
+    """Run summaryLines in Node against a /check/seen-shaped object."""
+    script = r"""
+      global.window = {}; global.document = {};
+      require(process.argv[1]);
+      const s = window.GeneMatchPrivacy.summaryLines;
+      console.log(JSON.stringify([s(3), s(1), s(null)]));
+    """
+    r = subprocess.run(["node", "-e", script, str(ROOT / "wallet" / "static" / "privacy.js")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    three, one, unknown = json.loads(r.stdout)
+    assert three[0] == "Your partner saw: 3 scrambled values and your lab-signed count"
+    assert one[0] == "Your partner saw: 1 scrambled value and your lab-signed count"
+    assert unknown[0] == "Your partner saw: scrambled values and your lab-signed count"
+    assert three[1:] == ["The server saw: scrambled values and your wallet's ID, never a gene name",
+                         "Your genes never left this device"]
+
+
+def test_invite_messages_are_one_line():
+    app_js = (ROOT / "wallet" / "static" / "app.js").read_text("utf-8")
+    assert '"Send this code to your partner: "' in app_js
+    assert '" invited you to a private check ("' in app_js
+    assert "You'll also see each other's total carrier count. Accept?" in app_js
+    assert '"What does this mean?"' in app_js and 'el("details", { class: "explain" }' in app_js
+    # The inviter name is set as text, never parsed as HTML.
+    assert 'el("p", { class: "one-line lead", text: line })' in app_js
 
 
 def test_landing_page_content():
@@ -106,8 +149,8 @@ def test_landing_page_content():
     assert 'href="/signin"' in page and 'href="#how"' in page
     summaries = re.findall(r"<summary>(.*?)</summary>", page)
     assert summaries == ["What is a carrier?", "Why does it matter for couples?",
-                         "How does GeneMatch keep it private?", "What can I do with it?",
-                         "What GeneMatch doesn't do"]
+                         "How does Symbolon keep it private?", "What can I do with it?",
+                         "What Symbolon doesn't do"]
     assert "25% (1 in 4)" in page and "Options exist" in page
     assert "not zero risk" in page and "whether to marry or have children" in page
     assert page.count('class="walk-step"') == 4 and "Alex" in page and "Sam" in page

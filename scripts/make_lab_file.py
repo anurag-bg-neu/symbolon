@@ -23,7 +23,7 @@ from lab.service import load_records, make_custom_lab_file  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Create a synthetic, lab-signed GeneMatch lab file.")
+    ap = argparse.ArgumentParser(description="Create a synthetic, lab-signed Symbolon lab file.")
     ap.add_argument("--person", required=True, help="wallet owner, for example alex")
     ap.add_argument("--genes", required=True, help="comma-separated genes, for example CFTR,HBB")
     ap.add_argument("--out", required=True, type=Path, help="output JSON path")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the GeneMatch demo: relay :8000, wallets :8101 (partner A) and :8102 (partner B),
+# Start the Symbolon demo: relay :8000, wallets :8101 (partner A) and :8102 (partner B),
 # lab :8200, trial verifier :8300.
 # Usage (macOS/Linux, or Git Bash on Windows): COUPLE=1|2|3 [EMPTY="alex"] ./scripts/run_demo.sh
 # Windows PowerShell: see scripts/run_demo.ps1. Ctrl-C stops everything.

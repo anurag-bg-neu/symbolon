@@ -17,12 +17,13 @@ from core.passwords import hash_password, verify_password
 COOKIE = "gm_lab_session"
 SESSION_TTL = 8 * 3600
 STAFF_ID = "_staff"
-STAFF_EMAIL = "staff@lab.genematch.demo"
+LAB_DOMAIN = "demolab.test"  # separate from wallet accounts (@genematch.demo)
+STAFF_EMAIL = f"staff@{LAB_DOMAIN}"
 STAFF_PASSWORD = "lab-staff"
 
 
 def patient_email(person_id: str) -> str:
-    return f"{person_id}@lab.genematch.demo"
+    return f"{person_id}@{LAB_DOMAIN}"
 
 
 def patient_password(person_id: str) -> str:

@@ -1,4 +1,4 @@
-/* GeneMatch wallet app (signed-in). Plain JS, no framework, no build step.
+/* Symbolon wallet app (signed-in). Plain JS, no framework, no build step.
    Talks only to this wallet's own backend (same origin). Every server value is
    rendered with textContent (never parsed as HTML).
    Default screens use plain language only; technical detail lives in privacy.js. */
@@ -32,6 +32,7 @@
     { name: "Exchanging scrambled lists", text: "Your wallets swap scrambled lists and check that each came from the lab." },
     { name: "Comparing", text: "Each wallet adds its own lock to the other's list. Matching items now line up." }
   ];
+  var MODE_NAME = { count: "Count", detail: "Detail" };
   var RAW_DNA_NOTE = "Raw DNA files (FASTQ, VCF, or exports from consumer DNA tests) can't be used. Results must come from a lab, so nobody can fake them.";
 
   // --- helpers ----------------------------------------------------------------
@@ -60,11 +61,25 @@
     window.setTimeout(function () { live.textContent = msg; }, 50);
   }
 
+  // Top navigation: highlight the current screen; Start/Join only with results.
+  function setNav(key) {
+    var buttons = document.querySelectorAll("[data-nav]");
+    for (var i = 0; i < buttons.length; i++) {
+      var b = buttons[i];
+      var k = b.getAttribute("data-nav");
+      b.hidden = k !== "home" && !(me && me.has_results);
+      if (k === key) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    }
+  }
+
   function screen(title, children, opts) {
     var h = el("h1", { id: "screen-title", tabindex: "-1", text: title });
     app.replaceChildren(el("section", { class: "screen reveal" + (opts && opts.wide ? " wide" : "") },
       [h].concat(children)));
-    h.focus();
+    setNav(opts && opts.nav);
+    window.scrollTo(0, 0);              // every screen starts at the top
+    h.focus({ preventScroll: true });
   }
 
   function button(label, onclick, kind) {
@@ -238,7 +253,7 @@
         button("Start a check with your partner", showStart),
         button("Join with an invite code", showJoin, "secondary")
       ])
-    ]);
+    ], { nav: "home" });
   }
 
   function showOnboarding() {
@@ -254,13 +269,13 @@
         ]),
         el("section", { class: "card", "aria-labelledby": "ob-file" }, [
           el("h2", { id: "ob-file", text: "Add your lab file" }),
-          el("p", { text: "Already downloaded a GeneMatch results file from your lab? Add it here." }),
+          el("p", { text: "Already downloaded a Symbolon results file from your lab? Add it here." }),
           el("div", { class: "actions" }, [button("Add your lab file", showUpload, "secondary")])
         ])
       ]),
       el("p", { class: "small muted", text: RAW_DNA_NOTE }),
       el("p", { class: "small muted", text: "All data in this demo is synthetic. Your results stay in your wallet and are never sent to the server." })
-    ]);
+    ], { nav: "home" });
   }
 
   // --- Connect your lab -------------------------------------------------------
@@ -275,18 +290,28 @@
     });
   }
 
-  function finishConnect(id) {
+  // Messages for /app#connect-error=<CODE>. Only these codes are shown; anything
+  // else in the URL falls back to the generic message.
+  var CONNECT_ERRORS = {
+    STATE_INVALID: "That lab link wasn't started from this wallet or has expired. Nothing was changed. Please connect again.",
+    STATE_USED: "That lab link was already used. Nothing was changed. Please connect again.",
+    NOT_APPROVED: "The lab didn't confirm sending your results. Nothing was changed.",
+    LAB_UNAVAILABLE: "We couldn't reach the lab, so nothing was changed. Please try again.",
+    TAMPERED: "The results from the lab couldn't be verified, so they weren't added. Nothing was changed."
+  };
+
+  function connectReturned(kind, code) {
     clearHash();
-    screen("Bringing in your results…", [el("p", { class: "muted", text: "Checking that they're signed by your lab." })]);
-    api("POST", "/onboard/connect/finish", { request_id: id }).then(function (r) {
-      if (r.status === "declined") return done("Nothing was sent.", r.reason);
-      if (r.status === "pending") return done("Waiting for approval.", "Approve the request on the lab's page, then come back.");
+    if (kind === "added") {
       return refreshMe().then(function () {
-        done("Your results are in your wallet.",
-             "The lab sent " + plural(r.count, "carrier result") +
-             (r.findings ? " and " + plural(r.findings, "trial finding") : "") + ". They're signed by the lab and stay on this device.");
+        done("Results added.", "Your lab sent " + plural(me.genes.length, "carrier result") +
+             (me.claims.length ? " and " + plural(me.claims.length, "trial finding") : "") +
+             ". They're signed by the lab and stay on this device.");
       });
-    }, function (e) { done("Your results weren't added.", e.userMessage); });
+    }
+    if (kind === "declined") return done("Nothing was sent.", "You chose not to send results from the lab. Nothing was changed.");
+    done("Your results weren't added.", Object.prototype.hasOwnProperty.call(CONNECT_ERRORS, code)
+      ? CONNECT_ERRORS[code] : "Something went wrong with the lab connection. Nothing was changed.");
   }
 
   function done(title, msg) {
@@ -304,12 +329,12 @@
       el("p", { class: "small muted", text: "or" }),
       el("label", { for: "labfile", class: "btn secondary", text: "Choose a file" }),
       input,
-      el("p", { class: "small muted", text: "A GeneMatch results file from your lab (.json, up to 100 KB)." })
+      el("p", { class: "small muted", text: "A Symbolon results file from your lab (.json, up to 100 KB)." })
     ]);
     function handle(file) {
       err.replaceChildren();
       if (!file) return;
-      if (file.size > MAX_FILE) { err.replaceChildren(errorBox("This file is too large to be a GeneMatch lab file (limit 100 KB). Nothing was stored.")); return; }
+      if (file.size > MAX_FILE) { err.replaceChildren(errorBox("This file is too large to be a Symbolon lab file (limit 100 KB). Nothing was stored.")); return; }
       var name = (file.name || "").replace(/[^\x20-\x7e]/g, "_");
       api("POST", "/onboard/upload", undefined, {
         body: file, headers: { "Content-Type": "application/octet-stream", "X-File-Name": name }
@@ -366,12 +391,33 @@
 
   // --- start and join ---------------------------------------------------------
 
-  function modeOption(value, title, checked) {
-    var id = "mode-" + value;
-    return el("div", { class: "option" }, [
-      el("input", { type: "radio", name: "mode", id: id, value: value, checked: checked }),
-      el("label", { for: id }, [el("strong", { text: title }), el("span", { class: "muted", text: MODE_TEXT[value] })])
+  // The whole box is the label, so clicking anywhere in it selects the option.
+  function modeOption(value, title, desc, checked) {
+    return el("label", { class: "option" }, [
+      el("input", { type: "radio", name: "mode", value: value, checked: checked }),
+      el("span", { class: "option-text" }, [
+        el("strong", { text: title }),
+        el("span", { class: "small muted", text: desc })
+      ])
     ]);
+  }
+
+  // "What does this mean?": the longer explanation, expanded in place.
+  function explainModes(mode) {
+    var items = mode ? [MODE_TEXT[mode]] : [
+      "Count mode: " + MODE_TEXT.count,
+      "Detail mode: " + MODE_TEXT.detail
+    ];
+    return el("details", { class: "explain" }, [
+      el("summary", { text: "What does this mean?" }),
+      el("div", { class: "explain-body" }, items.map(function (t) { return el("p", { class: "small", text: t }); })
+        .concat([el("p", { class: "small", text: COUNT_DISCLOSURE }),
+                 el("p", { class: "small muted", text: "Nothing is sent from either wallet until the invite is accepted." })]))
+    ]);
+  }
+
+  function groupCode(code) {
+    return code && code.length === 8 ? code.slice(0, 4) + "-" + code.slice(4) : code;
   }
 
   function showStart() {
@@ -393,34 +439,35 @@
     } }, [
       el("fieldset", {}, [
         el("legend", { text: "What should you both learn?" }),
-        modeOption("count", "Just the number", true),
-        modeOption("detail", "Which genes", false)
+        modeOption("count", "Count mode", "How many genes you share", true),
+        modeOption("detail", "Detail mode", "Which genes you share", false)
       ]),
-      el("p", { class: "small muted", text: COUNT_DISCLOSURE }),
+      el("p", { class: "small muted", text: "Either way, you'll each see the other's total carrier count." }),
       err,
       el("div", { class: "actions" }, [
         el("button", { type: "submit", class: "btn primary", text: "Create invite" }),
         button("Back", showHome, "secondary")
       ])
     ]);
-    screen("Start a check.", [form]);
+    screen("Start a check.", [form], { nav: "start" });
   }
 
   function showInvite(mode, code) {
     var copyMsg = el("span", { class: "small muted", "aria-live": "polite" });
+    var shown = groupCode(code);
     screen("Waiting for your partner.", [
       el("section", { class: "card" }, [
-        el("p", { text: "Share this invite code with your partner. It works once and expires in 24 hours." }),
-        code ? el("p", { class: "code", "aria-label": "Invite code " + code.split("").join(" "), text: code })
-             : el("p", { class: "muted", text: "Your invite code was shown when you started this check." }),
-        code ? el("div", { class: "actions" }, [
+        shown
+          ? el("p", { class: "one-line" }, ["Send this code to your partner: ",
+              el("strong", { class: "code-inline", "aria-label": shown.split("").join(" "), text: shown })])
+          : el("p", { class: "muted", text: "Your invite code was shown when you started this check." }),
+        shown ? el("div", { class: "actions" }, [
           button("Copy code", function () {
-            (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject())
+            (navigator.clipboard ? navigator.clipboard.writeText(shown) : Promise.reject())
               .then(function () { copyMsg.textContent = "Copied."; },
                     function () { copyMsg.textContent = "Copy failed. Select the code instead."; });
           }, "secondary"), copyMsg]) : null,
-        el("p", { class: "small", text: MODE_ON_RESULT[mode] || "" }),
-        el("p", { class: "small muted", text: "Nothing about you has been sent yet. The check starts on its own when your partner accepts." })
+        explainModes(mode)
       ]),
       el("div", { class: "actions" }, [button("Back to home", showHome, "secondary")])
     ]);
@@ -430,7 +477,7 @@
   function showJoin() {
     var err = el("div");
     var input = el("input", { id: "invite", name: "invite", autocomplete: "off", inputmode: "text",
-      maxlength: "8", minlength: "8", required: true, spellcheck: "false", class: "code-input",
+      maxlength: "12", required: true, spellcheck: "false", class: "code-input",
       "aria-describedby": "invite-help" });
     var form = el("form", { class: "card", onsubmit: function (ev) {
       ev.preventDefault();
@@ -447,19 +494,19 @@
     } }, [
       el("label", { for: "invite", text: "Invite code" }),
       input,
-      el("p", { id: "invite-help", class: "small muted", text: "8 letters and numbers from your partner." }),
+      el("p", { id: "invite-help", class: "small muted", text: "The code from your partner, like 7K4Q-9PXA." }),
       err,
       el("div", { class: "actions" }, [
         el("button", { type: "submit", class: "btn primary", text: "Continue" }),
         button("Back", showHome, "secondary")
       ])
     ]);
-    screen("Join a check.", [form]);
+    screen("Join a check.", [form], { nav: "join" });
   }
 
   function showConsent(r) {
     var err = el("div");
-    var accept = button("Accept and check privately", function () {
+    var accept = button("Accept", function () {
       accept.disabled = decline.disabled = true;
       api("POST", "/check/accept").then(function () {
         current.state = null;
@@ -476,11 +523,14 @@
         err.replaceChildren(errorBox(e.userMessage));
       });
     }, "secondary");
-    screen("Your partner invited you to a check.", [
+    // The inviter's name arrives through the relay: a label only, set with textContent.
+    var who = (typeof r.inviter_name === "string" && r.inviter_name.trim()) ? r.inviter_name.trim().slice(0, 40) : "Your partner";
+    var line = who + " invited you to a private check (" + (MODE_NAME[r.mode] || "Count") +
+      " mode). You'll also see each other's total carrier count. Accept?";
+    screen("You're invited.", [
       el("section", { class: "card" }, [
-        el("h2", { text: r.mode === "count" ? "Just the number" : "Which genes" }),
-        el("p", { text: r.mode_text }),
-        el("p", { class: "small muted", text: "Nothing is sent from your wallet unless you accept." }),
+        el("p", { class: "one-line lead", text: line }),
+        explainModes(r.mode),
         err,
         el("div", { class: "actions" }, [accept, decline])
       ])
@@ -542,7 +592,10 @@
     if (window.GeneMatchPrivacy) {
       try { window.GeneMatchPrivacy.render(col); } catch (e) { /* optional */ }
     }
-    col.appendChild(el("div", { class: "actions" }, [button("Back to home", showHome, "secondary")]));
+    col.appendChild(el("div", { class: "actions" }, [
+      button("Start another check", showStart),
+      button("Home", showHome, "secondary")
+    ]));
     screen("Done.", [col]);
     announce("Done. " + (st.result.shared_count === 0 ? "No shared carrier genes." : "Shared carrier genes: " + st.result.shared_count + "."));
   }
@@ -659,15 +712,22 @@
     var h = window.location.hash;
     var id = presentId();
     if (id) { showPresent(id); return true; }
-    var m = /^#connect=([0-9a-f]{32})$/.exec(h);
-    if (m) { finishConnect(m[1]); return true; }
-    if (h === "#connect-declined") {
-      clearHash();
-      done("Nothing was sent.", "You chose not to send results from the lab. Nothing was changed.");
-      return true;
-    }
+    if (h === "#results-added") { connectReturned("added"); return true; }
+    if (h === "#connect-declined") { connectReturned("declined"); return true; }
+    var m = /^#connect-error=([A-Z_]{1,32})$/.exec(h);
+    if (m) { connectReturned("error", m[1]); return true; }
     return false;
   }
+
+  var NAV = { home: function () { showHome(); }, start: function () { showStart(); },
+              join: function () { showJoin(); } };
+  Array.prototype.forEach.call(document.querySelectorAll("[data-nav]"), function (b) {
+    b.addEventListener("click", function () {
+      stopPolling();
+      clearHash();
+      NAV[b.getAttribute("data-nav")]();
+    });
+  });
 
   document.getElementById("signout").addEventListener("click", function () {
     stopPolling();

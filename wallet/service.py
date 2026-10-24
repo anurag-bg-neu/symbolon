@@ -8,6 +8,7 @@ Run: GENEMATCH_PERSON=alex uvicorn --factory wallet.service:create_app --port 81
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -39,6 +40,7 @@ PENDING_TTL = 10 * 60
 # Paths that need a signed-in session. Everything else (landing, sign-in, static
 # assets, /auth/*) is public and holds no personal data.
 PROTECTED_API = ("/me", "/check/", "/present", "/onboard/")
+JOIN_CODE = re.compile(r"[\s-]")
 SIGNED_OUT = {"code": "SIGNED_OUT", "user_message": "Please sign in to use your wallet."}
 NO_RESULTS = {"code": "NO_RESULTS", "user_message":
               "Add your lab results first. Nothing was shared."}
@@ -47,14 +49,14 @@ BUSY = {"code": "CHECK_IN_PROGRESS", "user_message":
 LAB_UNAVAILABLE = {"code": "LAB_UNAVAILABLE", "user_message":
                    "We couldn't reach the lab, so nothing was changed. Please try again."}
 RAW_DNA = {"code": "RAW_DNA", "user_message":
-           "This looks like a raw DNA file. GeneMatch only accepts results signed by a lab, "
-           "so nobody can fake them. Ask your lab for a GeneMatch results file. "
+           "This looks like a raw DNA file. Symbolon only accepts results signed by a lab, "
+           "so nobody can fake them. Ask your lab for a Symbolon results file. "
            "Nothing was stored."}
 FILE_TOO_LARGE = {"code": "FILE_TOO_LARGE", "user_message":
-                  "This file is too large to be a GeneMatch lab file (limit 100 KB). "
+                  "This file is too large to be a Symbolon lab file (limit 100 KB). "
                   "Nothing was stored."}
 NOT_JSON = {"code": "NOT_LAB_FILE", "user_message":
-            "This isn't a GeneMatch lab file. Nothing was stored."}
+            "This isn't a Symbolon lab file. Nothing was stored."}
 EXPIRED_UPLOAD = {"code": "UPLOAD_EXPIRED", "user_message":
                   "That upload expired. Please add the file again. Nothing was changed."}
 
@@ -153,9 +155,6 @@ class SignInBody(BaseModel):
     password: str
 
 
-class ConnectFinishBody(BaseModel):
-    request_id: str
-
 
 class ConfirmBody(BaseModel):
     pending_id: str
@@ -177,7 +176,7 @@ def create_app(person_id: str | None = None,
     presentations: list[dict[str, Any]] = []  # what this wallet sent to trials
     poll = float(os.environ.get("GENEMATCH_POLL", "0.5"))
     panel = {e["gene"]: e for e in keys.load_panel()}
-    app = FastAPI(title=f"GeneMatch wallet ({person_id})")
+    app = FastAPI(title=f"Symbolon wallet ({person_id})")
     holder = {"check": _new_check()}
     app.state.holder = holder  # lets tests inspect the live Session
 
@@ -186,7 +185,8 @@ def create_app(person_id: str | None = None,
     cookie = f"gm_session_{person_id}"  # per wallet: localhost cookies ignore the port
     app.state.sessions = sessions
     app.state.cookie_name = cookie
-    connects: dict[str, dict[str, Any]] = {}   # request_id -> collect token, holder seed
+    connects: dict[str, dict[str, Any]] = {}   # one-time state -> request, token, holder seed
+    app.state.connects = connects  # lets tests age or inspect pending Connect states
     pending_uploads: dict[str, dict[str, Any]] = {}
 
     def signed_in(request: Request) -> bool:
@@ -407,7 +407,8 @@ def create_app(person_id: str | None = None,
     async def start(body: StartBody):
         if not has_results():
             return JSONResponse({"error": NO_RESULTS}, status_code=409)
-        r = await call("POST", "/sessions", json={"mode": body.mode})
+        r = await call("POST", "/sessions", json={"mode": body.mode,
+                                                  "inviter_name": accounts.display_name()[:40]})
         if r.status_code != 200:
             # call() already maps 5xx (including "relay full"); any other non-200
             # means there is no session to use, so report it instead of a KeyError.
@@ -422,15 +423,19 @@ def create_app(person_id: str | None = None,
     async def join(body: JoinBody):
         if not has_results():
             return JSONResponse({"error": NO_RESULTS}, status_code=409)
-        r = await call("POST", "/sessions/join", json={"invite_code": body.invite_code})
+        code = JOIN_CODE.sub("", body.invite_code).upper()  # accepts 7K4Q-9PXA or 7k4q9pxa
+        r = await call("POST", "/sessions/join", json={"invite_code": code})
         if r.status_code != 200:
             return JSONResponse({"error": INVALID_INVITE}, status_code=400)
         data = r.json()
         # Joining sends no protocol data; nothing leaves this wallet until accept.
         reset(state="awaiting_accept", mode=data["mode"], sid=data["session_id"],
               role="joiner")
+        # The inviter's name comes via the relay, so it is only a display label.
+        name = data.get("inviter_name")
+        name = " ".join(name.split())[:40] if isinstance(name, str) and name.strip() else None
         return {"session_id": data["session_id"], "mode": data["mode"],
-                "mode_text": MODE_TEXT[data["mode"]]}
+                "mode_text": MODE_TEXT[data["mode"]], "inviter_name": name}
 
     @app.post("/check/accept")
     async def accept() -> dict:
@@ -577,53 +582,66 @@ def create_app(person_id: str | None = None,
             return JSONResponse({"error": BUSY}, status_code=409)
         seed = secrets.token_bytes(32)  # new holder key, generated here; lab sees only the public key
         pub = crypto.pubkey_from_seed(seed).hex()
-        return_url = f"{request.url.scheme}://{request.headers.get('host', '')}/app"
+        state = secrets.token_urlsafe(32)  # one-time, bound to this wallet session
+        return_url = f"{request.url.scheme}://{request.headers.get('host', '')}/connect/callback"
         try:
             r = await lab.post("/connect/requests", json={
-                "person_id": person_id, "holder_pubkey": pub, "return_url": return_url})
+                "person_id": person_id, "holder_pubkey": pub, "return_url": return_url,
+                "state": state})
         except httpx.HTTPError:
             return JSONResponse({"error": LAB_UNAVAILABLE}, status_code=502)
         if r.status_code != 200:
             return JSONResponse({"error": LAB_UNAVAILABLE}, status_code=502)
         data = r.json()
-        for rid in [k for k, v in connects.items() if v["expires"] < time.time()]:
-            connects.pop(rid, None)
-        connects[data["request_id"]] = {"token": data["collect_token"], "seed": seed.hex(),
-                                        "pub": pub, "expires": time.time() + PENDING_TTL}
+        now = time.time()
+        for s in [k for k, v in connects.items() if v["expires"] < now]:
+            connects.pop(s, None)
+        connects[state] = {"request_id": data["request_id"], "token": data["collect_token"],
+                           "seed": seed.hex(), "pub": pub, "used": False,
+                           "session": request.cookies.get(cookie),
+                           "expires": now + PENDING_TTL}
         return {"consent_url": data["consent_url"]}
 
-    @app.post("/onboard/connect/finish")
-    async def onboard_connect_finish(body: ConnectFinishBody):
-        pend = connects.get(body.request_id)
-        if pend is None or pend["expires"] < time.time():
-            return JSONResponse({"error": {"code": "CONNECT_EXPIRED", "user_message":
-                "That lab request expired or was already used. Please connect again. "
-                "Nothing was changed."}}, status_code=404)
+    def back_to_app(fragment: str) -> RedirectResponse:
+        return RedirectResponse(f"/app#{fragment}", status_code=303)
+
+    @app.get("/connect/callback")
+    async def connect_callback(request: Request, state: str = "", outcome: str = ""):
+        """The lab sends the browser here after Send or Don't send."""
+        if not signed_in(request):
+            return RedirectResponse("/signin", status_code=303)
+        pend = connects.get(state) if state else None
+        if (pend is None or pend["expires"] < time.time()
+                or not hmac.compare_digest(pend["session"] or "", request.cookies.get(cookie) or "")):
+            return back_to_app("connect-error=STATE_INVALID")
+        if pend["used"]:
+            return back_to_app("connect-error=STATE_USED")
+        pend["used"] = True  # consumed on first use, kept until expiry to detect reuse
+        if outcome == "declined":
+            return back_to_app("connect-declined")
         if not idle():
-            return JSONResponse({"error": BUSY}, status_code=409)
+            return back_to_app("connect-error=NOT_APPROVED")
         try:
-            r = await lab.get(f"/connect/{body.request_id}/result",
+            r = await lab.get(f"/connect/{pend['request_id']}/result",
                               headers={"X-Collect-Token": pend["token"]})
         except httpx.HTTPError:
-            return JSONResponse({"error": LAB_UNAVAILABLE}, status_code=502)
+            return back_to_app("connect-error=LAB_UNAVAILABLE")
+        if r.status_code == 409:  # the lab's answer wins over the URL's outcome
+            return back_to_app("connect-declined")
         if r.status_code == 202:
-            return {"status": "pending"}
-        connects.pop(body.request_id, None)
-        if r.status_code == 409:
-            return {"status": "declined", "reason": "You chose not to send results. "
-                                                    "Nothing was changed."}
+            return back_to_app("connect-error=NOT_APPROVED")
         if r.status_code != 200:
-            return JSONResponse({"error": LAB_UNAVAILABLE}, status_code=502)
+            return back_to_app("connect-error=LAB_UNAVAILABLE")
         data = r.json()
         try:
-            cred, genes, name = verify_lab_file(data.get("lab_file"), wallet["lab_pubkey"],
-                                                person_id)
+            cred, genes, _ = verify_lab_file(data.get("lab_file"), wallet["lab_pubkey"], person_id)
             claim_objs = verify_connect_claims(data.get("claims"), wallet["lab_pubkey"],
                                                person_id, pend["pub"])
-        except LabFileError as e:
-            return JSONResponse({"error": e.to_dict()}, status_code=400)
+        except LabFileError:
+            return back_to_app("connect-error=TAMPERED")
         apply_results(cred, genes, claim_objs, pend["seed"])
-        return {"status": "connected", "count": len(genes), "findings": len(claim_objs)}
+        pend["seed"] = None
+        return back_to_app("results-added")
 
     # --- onboarding: Add your lab file -----------------------------------------
 

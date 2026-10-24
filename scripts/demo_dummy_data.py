@@ -1,4 +1,4 @@
-"""Run the GeneMatch protocol against dummy, synthetic genetic data.
+"""Run the Symbolon protocol against dummy, synthetic genetic data.
 
 Creates a fake lab, a small autosomal-recessive carrier-screening panel, and two
 people with lab-signed credentials, then runs the full two-party DH-PSI protocol
@@ -115,7 +115,7 @@ def print_result(name_a, name_b, mode, res, expected):
 
 def main() -> int:
     print("=" * 68)
-    print("GeneMatch demo  —  synthetic carrier-screening data")
+    print("Symbolon demo  —  synthetic carrier-screening data")
     print("=" * 68)
 
     lab = DummyLab()

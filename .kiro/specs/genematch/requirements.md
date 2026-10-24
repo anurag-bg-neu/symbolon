@@ -113,7 +113,8 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 **User Story:** As a tested person, I want to load my results from my lab, so that my partner and trials can trust them.
 
 #### Acceptance Criteria
-1. THE wallet SHALL offer "Connect your lab": the wallet requests a credential from the demo lab, the user approves on the lab's own consent page ("GeneMatch Demo Lab wants to send your carrier results to this wallet"), and the wallet collects the lab-signed credential and trial claims server-side.
+1. THE wallet SHALL offer "Connect your lab", which redirects to the lab's own patient portal. The lab portal SHALL look like a separate organization (its own name, mark, and colour), have its own sign-in with separate lab credentials, and ask "Send your carrier results to your GeneMatch wallet?". On approval THE lab SHALL redirect back to the wallet, which collects the lab-signed credential and trial claims server-side, self-checks them, and shows "Results added". On decline THE wallet SHALL say that nothing was changed.
+12. THE Connect redirect SHALL carry a one-time `state` value created by the wallet and bound to the wallet session that started it; THE wallet SHALL reject a missing, unknown, expired, reused, or other-session `state` with a plain message and change nothing.
 2. WHEN connecting THE lab SHALL issue only the results in its own synthetic records for that person, and THE wallet SHALL generate the holder key itself and send only its public key.
 3. THE wallet SHALL offer "Add your lab file" (file picker and drag-and-drop, JSON only, at most 100 KB) for carrier credentials exported by the demo lab.
 4. BEFORE accepting a lab file THE wallet SHALL verify the lab signature on the credential and on the gene list against its pinned lab key, run the existing owner-side credential check, and confirm the file belongs to this wallet's person, showing a plain-language reason on any failure.
@@ -129,7 +130,8 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 
 1. Default wallet screens SHALL use plain language only, with no cryptographic terms (for example PSI, ristretto255, commitment, scalar, nonce, token).
 2. THE check SHALL show three steps: "Sealing your list", "Exchanging scrambled lists", "Comparing", with status text "Checking privately…" and "Done".
-3. THE result screen SHALL include "What did everyone see?" inside a collapsible "Privacy details" section, closed by default. Technical terms are allowed there.
+3. THE result screen SHALL show a short "Privacy details" summary of three plain lines: "Your partner saw: N scrambled values and your lab-signed count", "The server saw: scrambled values and your wallet's ID, never a gene name", "Your genes never left this device", with N taken from what this wallet sent. The full per-party transcript SHALL be behind a "Show technical details" toggle, closed by default. Technical terms are allowed only inside that toggle.
+4. Invite messages SHALL each be one short line: "Send this code to your partner: 7K4Q-9PXA" and "<Name> invited you to a private check (<Mode> mode). You'll also see each other's total carrier count. Accept?". On the start screen each mode option SHALL carry a description of a few words inside its own box (the whole box selectable); on the invite and accept screens longer mode explanations SHALL be behind a "What does this mean?" link that expands in place. The inviter's name is a display label supplied by the inviting wallet, at most 40 characters, rendered as text.
 
 ### Requirement 11: Public landing page
 

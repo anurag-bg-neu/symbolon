@@ -1,4 +1,4 @@
-"""Crypto primitives for GeneMatch.
+"""Crypto primitives for Symbolon.
 
 ristretto255 via rbcl (libsodium), Ed25519 via PyNaCl, SHA-2 via hashlib.
 This is the only module that imports the group library. Pure functions, no I/O,

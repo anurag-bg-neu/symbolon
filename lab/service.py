@@ -16,11 +16,11 @@ import secrets
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core import crypto
 from core.issuance import IssuanceError, issue
@@ -37,7 +37,7 @@ ALLOWED_RETURN_HOSTS = {"localhost", "127.0.0.1"}
 BANNER = "Demo with synthetic data. Not medical advice."
 SAFE_NEXT = ("/my-results", "/staff/records")
 
-app = FastAPI(title="GeneMatch lab")
+app = FastAPI(title="Symbolon lab")
 CONNECT: dict[str, dict[str, Any]] = {}
 SESSIONS = auth.LabSessions()
 
@@ -58,6 +58,7 @@ class ConnectRequest(BaseModel):
     person_id: str
     holder_pubkey: str
     return_url: str
+    state: str = Field(min_length=32, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 # --- configuration -----------------------------------------------------------------
@@ -112,25 +113,40 @@ def ar_panel() -> list[dict[str, Any]]:
 
 # --- pages ---------------------------------------------------------------------------
 
+# The lab is a separate organization in the same calm, Apple-inspired layout as the
+# wallet (white header, whitespace, rounded cards, pill buttons). Only the accent
+# differs: deep violet (#4b2e83, ~10:1 on white) for buttons, links, and the mark.
 LAB_CSS = """
-:root{--ink:#1d1d1f;--muted:#515154;--line:#d2d2d7;--accent:#0a5c8a;--soft:#eef5fa;
-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink)}
-body{margin:0;background:#fbfbfd;line-height:1.5}
-.banner{background:var(--ink);color:#fff;text-align:center;padding:6px 12px;font-size:.9rem}
-header{max-width:680px;margin:0 auto;padding:20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-.brand{font-weight:700;color:var(--accent)}main{max-width:680px;margin:0 auto;padding:0 20px 48px}
-h1{font-size:2rem;line-height:1.15;margin:12px 0}h2{font-size:1.2rem;margin:0 0 8px}
-.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;margin:16px 0}
+:root{--ink:#1d1d1f;--muted:#515154;--line:#d2d2d7;--accent:#4b2e83;--soft:#f3effa;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif;
+color:var(--ink);-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+body{margin:0;background:#fbfbfd;line-height:1.55;font-size:17px}
+a{color:var(--accent)}
+.banner{background:var(--ink);color:#fff;text-align:center;padding:7px 12px;font-size:.85rem;position:sticky;top:0;z-index:10}
+header{max-width:760px;margin:0 auto;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink);text-decoration:none;letter-spacing:-.01em}
+.brand small{display:block;font-weight:500;font-size:.8rem;color:var(--accent)}
+.mark{width:30px;height:30px;flex:none}.who{color:var(--muted);font-size:.9rem;margin-right:8px}
+header button{padding:6px 14px;font-size:.9rem}
+main{max-width:640px;margin:0 auto;padding:8px 24px 72px}
+h1{font-size:clamp(1.9rem,5vw,2.6rem);line-height:1.12;letter-spacing:-.02em;margin:28px 0 14px}
+h2{font-size:1.2rem;margin:0 0 10px;letter-spacing:-.01em}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;margin:20px 0}
 .muted{color:var(--muted)}.small{font-size:.9rem}.tag{display:inline-block;background:var(--soft);
-color:var(--accent);border-radius:999px;padding:2px 10px;font-size:.85rem;font-weight:600}
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
-button,.btn{font:inherit;font-weight:600;border-radius:999px;padding:10px 20px;border:2px solid var(--accent);
-cursor:pointer;text-decoration:none;display:inline-block}
+color:var(--accent);border-radius:999px;padding:3px 12px;font-size:.8rem;font-weight:600}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;align-items:center}
+button,.btn{font:inherit;font-weight:600;border-radius:999px;padding:11px 22px;border:2px solid var(--accent);
+cursor:pointer;text-decoration:none;display:inline-block;line-height:1.2}
+main,h1{animation:reveal .45s ease-out both}
+@keyframes reveal{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:480px){body{font-size:16px}header,main{padding-left:16px;padding-right:16px}.card{padding:18px}}
 .primary{background:var(--accent);color:#fff}.secondary{background:#fff;color:var(--accent)}
 button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #f0b429;outline-offset:2px}
 label{display:block;font-weight:600;margin:12px 0 4px}
-input[type=email],input[type=password]{font:inherit;padding:9px 12px;border:1px solid var(--line);
-border-radius:10px;width:100%;max-width:340px}fieldset{border:1px solid var(--line);border-radius:12px;padding:12px}
+input[type=email],input[type=password]{font:inherit;padding:11px 14px;border:1px solid var(--line);
+border-radius:12px;width:100%;background:#fff}fieldset{border:1px solid var(--line);border-radius:14px;padding:14px}
 .genes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
 .genes label{font-weight:400;margin:0}.notice{background:#fff6e0;border-left:4px solid #b7891f;
 border-radius:8px;padding:10px 14px}.chips{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
@@ -139,20 +155,29 @@ form.inline{display:inline}
 """
 
 
+LAB_MARK = ('<svg class="mark" viewBox="0 0 32 32" aria-hidden="true">'
+            '<rect x="1" y="1" width="30" height="30" rx="9" fill="#f3effa"/>'
+            '<path d="M12 6h8M14 6v8l-6 11a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-6-11V6" '
+            'fill="none" stroke="#4b2e83" stroke-width="2.4" stroke-linejoin="round"/>'
+            '<path d="M10.5 21h11" stroke="#4b2e83" stroke-width="2.4"/></svg>')
+
+
 def _page(title: str, body: str, ident: dict | None = None, status: int = 200) -> HTMLResponse:
     """Server-rendered lab page. Every dynamic value is passed through html.escape."""
     who = ""
     if ident:
         label = "Lab staff" if ident["role"] == "staff" else _name(ident["person_id"])
-        who = (f'<span class="small muted">Signed in: {html.escape(label)}</span> '
+        who = (f'<span class="who">Signed in: {html.escape(label)}</span> '
                '<form class="inline" method="post" action="/signout">'
                '<button class="secondary" type="submit">Sign out</button></form>')
     return HTMLResponse(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        f"<title>{html.escape(title)} · GeneMatch Demo Lab</title><style>{LAB_CSS}</style></head><body>"
+        f"<title>{html.escape(title)} · Symbolon Demo Lab</title><style>{LAB_CSS}</style></head><body>"
         f"<div class=\"banner\" role=\"note\">{BANNER}</div>"
-        f"<header><span class=\"brand\">GeneMatch Demo Lab</span><div>{who}</div></header>"
+        f"<header><a class=\"brand\" href=\"/\">{LAB_MARK}"
+        "<span>Symbolon Demo Lab<small>Patient portal</small></span></a>"
+        f"<div>{who}</div></header>"
         f"<main>{body}</main></body></html>", status_code=status)
 
 
@@ -205,8 +230,8 @@ def _signin_page(next_url: str, error: str | None = None, status: int = 200) -> 
         demo = (f'<div class="card"><p class="small"><strong>Demo lab accounts</strong> (synthetic data)</p>'
                 f'<ul class="small">{rows}<li>Lab staff: {auth.STAFF_EMAIL} / {auth.STAFF_PASSWORD}</li></ul></div>')
     return _page("Sign in", f"""
-<h1>Sign in to the lab.</h1>
-<p class="muted">Sign in with your lab account to see or share your results.</p>
+<h1>Patient portal sign-in</h1>
+<p class="muted">Sign in with your Symbolon Demo Lab account. This is separate from your Symbolon wallet.</p>
 {err}
 <form class="card" method="post" action="/signin">
   <input type="hidden" name="next" value="{html.escape(next_url)}">
@@ -218,7 +243,10 @@ def _signin_page(next_url: str, error: str | None = None, status: int = 200) -> 
 
 
 @app.get("/", response_class=HTMLResponse)
-def home():
+def home(request: Request):
+    """Portal home: sign-in when signed out, otherwise your results (or staff records)."""
+    if _ident(request) is None:
+        return _signin_page("/my-results")
     return RedirectResponse("/my-results", status_code=303)
 
 
@@ -325,7 +353,7 @@ def _valid_return(url: str) -> bool:
     except ValueError:
         return False
     return (u.scheme in ("http", "https") and u.hostname in ALLOWED_RETURN_HOSTS
-            and u.path == "/app" and not u.query and not u.fragment
+            and u.path == "/connect/callback" and not u.query and not u.fragment
             and u.username is None and u.password is None)
 
 
@@ -348,11 +376,11 @@ def connect_request(body: ConnectRequest) -> dict:
     except (TypeError, ValueError):
         raise HTTPException(422, "holder_pubkey must be 32 bytes of hex") from None
     if not _valid_return(body.return_url):
-        raise HTTPException(422, "return_url must be a local wallet /app address")
+        raise HTTPException(422, "return_url must be a local wallet /connect/callback address")
     rid = secrets.token_hex(16)
     token = secrets.token_hex(32)
     CONNECT[rid] = {"person_id": body.person_id, "holder_pubkey": body.holder_pubkey,
-                    "return_url": body.return_url, "collect_token": token,
+                    "return_url": body.return_url, "state": body.state, "collect_token": token,
                     "status": "pending", "result": None,
                     "expires": time.time() + CONNECT_TTL}
     return {"request_id": rid, "consent_url": f"{public_base()}/connect/{rid}",
@@ -398,17 +426,22 @@ def connect_consent(rid: str, request: Request):
                 "clinical trial" if n_find else "")
     rid_e = html.escape(rid)
     return _page("Send your results to your wallet", f"""
-<h1>GeneMatch Demo Lab wants to send your carrier results to this wallet.</h1>
+<h1>Send your carrier results to your Symbolon wallet?</h1>
 <section class="card">
   <p><span class="tag">Synthetic demo data</span></p>
   <p>Results for <strong>{name}</strong>: {n_genes} carrier result{'s' if n_genes != 1 else ''}{findings}.</p>
   <p class="muted small">The lab signs your results so nobody can fake them. They go only to your
   wallet. The lab never sees your wallet's private key.</p>
   <div class="actions">
-    <form method="post" action="/connect/{rid_e}/approve"><button class="primary" type="submit">Send my results</button></form>
+    <form method="post" action="/connect/{rid_e}/approve"><button class="primary" type="submit">Send</button></form>
     <form method="post" action="/connect/{rid_e}/decline"><button class="secondary" type="submit">Don't send</button></form>
   </div>
 </section>""", ident)
+
+
+def _back(entry: dict, outcome: str) -> RedirectResponse:
+    q = urlencode({"state": entry["state"], "outcome": outcome})
+    return RedirectResponse(f"{entry['return_url']}?{q}", status_code=303)
 
 
 @app.post("/connect/{rid}/approve")
@@ -419,7 +452,7 @@ def connect_approve(rid: str, request: Request):
         raise HTTPException(409, "already answered")
     entry["result"] = issue_for(entry["person_id"], entry["holder_pubkey"])
     entry["status"] = "approved"
-    return RedirectResponse(f"{entry['return_url']}#connect={rid}", status_code=303)
+    return _back(entry, "approved")
 
 
 @app.post("/connect/{rid}/decline")
@@ -429,7 +462,7 @@ def connect_decline(rid: str, request: Request):
     if entry["status"] != "pending":
         raise HTTPException(409, "already answered")
     entry["status"] = "declined"
-    return RedirectResponse(f"{entry['return_url']}#connect-declined", status_code=303)
+    return _back(entry, "declined")
 
 
 @app.get("/connect/{rid}/result")
@@ -467,7 +500,7 @@ def my_results(request: Request):
   <h2>Carrier results</h2><ul class="chips">{chips}</ul>
   <p class="small muted">Trial findings: {finds}. These go to your wallet only through "Connect your lab".</p>
   <div class="actions"><a class="btn primary" href="/my-results/file">Download your results file</a></div>
-  <p class="small muted">Add this file to your GeneMatch wallet with "Add your lab file". It is signed by the lab,
+  <p class="small muted">Add this file to your Symbolon wallet with "Add your lab file". It is signed by the lab,
   so it can't be changed. Your results are set by the lab; you can't edit them here.</p>
 </section>""", ident)
 

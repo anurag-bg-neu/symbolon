@@ -121,7 +121,7 @@ def test_relay_create_and_join(rc):
     assert re.fullmatch(r"[0-9a-f]{32}", s["session_id"])
     assert re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{8}", s["invite_code"])
     j = rc.post("/sessions/join", json={"invite_code": s["invite_code"].lower()})
-    assert j.json() == {"session_id": s["session_id"], "mode": "detail"}
+    assert j.json() == {"session_id": s["session_id"], "mode": "detail", "inviter_name": None}
     assert rc.post("/sessions/join", json={"invite_code": s["invite_code"]}).status_code == 409
     assert rc.post("/sessions/join", json={"invite_code": "ZZZZZZZZ"}).status_code == 404
     assert rc.get(f"/sessions/{s['session_id']}/state").json()["state"] == "joined"
@@ -603,3 +603,27 @@ def test_demo_backend_script_passes():
                        cwd=ROOT)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "RESULT: all checks passed" in r.stdout
+
+
+# --- one-line invites: inviter name and grouped codes (task 11.3) --------------------
+
+
+def test_inviter_name_reaches_the_joiner_as_a_label(var):
+    async def go():
+        rc = relay_client()
+        wa, wb = wallet_client("alex", rc), wallet_client("sam", rc)
+        s = (await wa.post("/check/start", json={"mode": "count"})).json()
+        grouped = s["invite_code"][:4] + "-" + s["invite_code"][4:]
+        return (await wb.post("/check/join", json={"invite_code": grouped.lower()})).json()
+    j = asyncio.run(go())
+    assert j["inviter_name"] == "Alex" and j["mode"] == "count"
+
+
+def test_relay_inviter_name_is_capped_and_optional(rc):
+    long = rc.post("/sessions", json={"mode": "count", "inviter_name": "x" * 41})
+    assert long.status_code == 422
+    s = rc.post("/sessions", json={"mode": "count", "inviter_name": "  Alex \n Smith  "}).json()
+    j = rc.post("/sessions/join", json={"invite_code": s["invite_code"][:4] + "-" + s["invite_code"][4:]})
+    assert j.json()["inviter_name"] == "Alex Smith"
+    s2 = rc.post("/sessions", json={"mode": "detail"}).json()
+    assert rc.post("/sessions/join", json={"invite_code": s2["invite_code"]}).json()["inviter_name"] is None

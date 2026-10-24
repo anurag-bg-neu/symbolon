@@ -1,8 +1,8 @@
-# GeneMatch
+# Symbolon
 
 **Know your genetic risks. Keep your genetic secrets.**
 
-GeneMatch gives you a lab-signed genetic credential that never leaves your phone. With privacy-preserving cryptography, you answer exactly one question at a time, such as *"Are we at risk together?"* or *"Am I eligible for this trial?"*, and nobody ever sees your genome: not your partner, not our servers, not our AI.
+Symbolon gives you a lab-signed genetic credential that never leaves your phone. With privacy-preserving cryptography, you answer exactly one question at a time, such as *"Are we at risk together?"* or *"Am I eligible for this trial?"*, and nobody ever sees your genome: not your partner, not our servers, not our AI.
 
 > We don't decide who you love. We make sure you're never surprised.
 
@@ -26,7 +26,7 @@ One credential, two use cases.
 
 Most serious inherited childhood diseases (cystic fibrosis, sickle cell disease, Tay-Sachs, spinal muscular atrophy) are **autosomal recessive**: a child is affected only if both parents pass on a broken copy of the same gene. Carriers are healthy and usually don't know. If both partners carry the same gene, each pregnancy has a 25% chance of an affected child.
 
-GeneMatch compares two partners' carrier genes using **private set intersection (PSI)**. Each partner learns only the agreed result, either *how many* conditions they share or *which* ones, and nothing else. An AI counselor then explains the result and options in plain language and suggests questions for a genetic counselor.
+Symbolon compares two partners' carrier genes using **private set intersection (PSI)**. Each partner learns only the agreed result, either *how many* conditions they share or *which* ones, and nothing else. An AI counselor then explains the result and options in plain language and suggests questions for a genetic counselor.
 
 ### 2. Clinical trial eligibility
 
@@ -50,7 +50,7 @@ The same credential is reused to prove *"I carry the variant this trial requires
 
 ## Why it's trustworthy
 
-| Concern | How GeneMatch handles it |
+| Concern | How Symbolon handles it |
 |---|---|
 | Faking results | Only the lab can create tokens and signed claims. |
 | A partner probing your whole carrier status | The gene panel is small, so plain PSI would let someone enter every gene. Lab-issued tokens plus a signed count cap prevent this. |
