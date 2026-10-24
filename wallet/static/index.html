@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeneMatch wallet</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="banner" role="note">Demo with synthetic data. Not medical advice.</div>
+  <header class="top">
+    <span class="brand">GeneMatch</span>
+    <span class="who" id="who" aria-label="Wallet owner"></span>
+  </header>
+  <main id="app" tabindex="-1" aria-labelledby="screen-title">
+    <noscript><p>This wallet needs JavaScript to run the check.</p></noscript>
+  </main>
+  <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Optional counselor UI. Delete this line (and the agent/ package) to remove
+       the feature; the check, result, and transparency panel keep working. -->
+  <script src="counselor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

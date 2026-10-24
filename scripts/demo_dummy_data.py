@@ -7,12 +7,19 @@ end-to-end in both Count and Detail modes.
 No real genetic data is used. Everything here is synthetic.
 
 Run from the repo root:
-    .venv/bin/python scripts/demo_dummy_data.py
+    macOS/Linux: .venv/bin/python scripts/demo_dummy_data.py
+    Windows:     .venv\\Scripts\\python.exe scripts\\demo_dummy_data.py
 """
 
 from __future__ import annotations
 
 import secrets
+import sys
+
+# Windows consoles default to cp1252; force UTF-8 so the dashes print everywhere.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from core import crypto
 from core.issuance import issue

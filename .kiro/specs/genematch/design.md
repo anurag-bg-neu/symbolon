@@ -191,8 +191,15 @@ Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the
 - `explain(result: Result, panel: Panel) -> Explanation`
 - Input in Count mode: `{shared_count}`. Input in Detail mode: `{shared: [panel entries]}`.
 - `build_prompt(...)` is a separate function so tests can assert the Count-mode prompt contains no gene or condition names.
-- Bedrock adapter uses the Converse API through `boto3`, with a strict system prompt ("use only the provided facts; do not diagnose; always refer to a genetic counselor") and a 10-second timeout.
-- Falls back to the deterministic template when `BEDROCK_MODEL_ID` is unset, the call raises or times out, or the output fails validation (missing the 25% statement when genes are shared, missing the counselor referral, or fewer than 3 or more than 5 questions).
+- **Current build: template only.** `explain()` returns the deterministic template (`source: "template"`). No LLM or AWS code exists. `counselor.py` has a marked `LLM HOOK` (`_llm_explain`, returning None) where a model call can be added later; `explain()` already validates any LLM output (`valid()`: 25% statement and "options" when genes are shared, "not zero" and "not tested" when none are, a counselor referral, 3–5 questions, a disclaimer) and falls back to the template on failure.
+- **Optional feature.** Deleting `agent/` makes the wallet return `explanation: null`; the UI's counselor code lives only in `wallet/static/counselor.js`, loaded by one removable `<script>` tag. The required safety text (25% risk, options exist, see a genetic counselor, lower-not-zero, not a diagnosis) is static in `app.js`, so it stays when the counselor is removed. A test runs a full check with the counselor removed.
+
+### Wallet UI (`wallet/static/`, plain HTML/CSS/JS)
+- Screens: home (own genes, "visible only to you", trial findings), start (mode choice and invite code), join (code, then mode text with consent), running (three steps "Seal", "Reveal", "Double-lock" from `round`), result, failed, declined, trial approval (`#present=<id>`).
+- Result screen: the answer, a line restating the agreed mode, the static safety text, the optional counselor block, and the "What did everyone see?" panel beside it (cards for You, Your partner, Relay server, plus Counselor and Trial site when they have items). Calm neutral colours only.
+- Polling: every 3 s while waiting for the partner (no timeout, since joining may happen later); every 500 ms while running, with a 60 s timeout and a plain message; stops on `done`, `failed`, `declined`; pauses while the tab is hidden; after 3 network failures it stops and says the wallet can't be reached.
+- Trial approval names the requester and the finding ("<trial> is asking to verify your <gene> <finding> finding"), lists what will and won't be shared, and notes that sharing the same finding with two trials is linkable.
+- All server values are rendered with `textContent`; tests check there are no HTML-injection sinks.
 
 ## Data models
 
@@ -243,11 +250,17 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 - **Salt:** 128 random bits from `secrets`; makes each claim's hash unguessable, so a claim hash revealed in one context cannot be matched against guesses.
 
 ### trial/service.py (port 8300)
-- `GET /` serves the verifier page. `GET /trials` lists `data/trials.json`.
-- `POST /requests {trial_id} -> TrialRequest`. Nonce is `secrets.token_hex(16)`.
-- `GET /requests/{id} -> {request, status, reason}`, where status is `pending | eligible | rejected`.
-- `POST /requests/{id}/present {presentation} -> {status, reason}`. Calls `core.claims.verify_presentation`, then marks the nonce used.
-- Nonces are single-use and expire after 5 minutes.
+- `GET /` serves the verifier page (a placeholder until `trial/static/index.html` exists). `GET /trials` lists `data/trials.json`, falling back to two built-in demo trials (BRCA1, BRCA2) if the file is missing. Only trials whose required gene is in `CLAIM_GENES` are listed.
+- `POST /requests {trial_id} -> TrialRequest`. `request_id` and nonce are `secrets.token_hex(16)`; `gene` and `finding` come from the trial's `required`; `expires_at` is 5 minutes after creation.
+- `GET /requests/{id} -> {request, status, code, reason, received}`, where status is `pending | eligible | rejected`, `code` is the `ProtocolError` code or null, `reason` is the plain-language message ("Eligible — verified by lab" when eligible), and `received` is `{claims: 0|1, gene, finding}` so the verifier page can show it received exactly one claim. A pending request past its expiry reads as `rejected` / `NONCE_EXPIRED`.
+- `POST /requests/{id}/present {presentation} -> {status, code, reason}`. Order: request must exist (404), nonce not already used (`NONCE_REUSED`), not expired (`NONCE_EXPIRED`), then `core.claims.verify_presentation`. The nonce is marked used on every attempt that reaches verification, valid or not, so each request accepts exactly one presentation.
+- Nonces are single-use and expire after 5 minutes. The request store is in memory.
+- The lab public key comes from `create_app(lab_pubkey=...)` in tests, else env `GENEMATCH_LAB_PUBKEY`, else `GET {GENEMATCH_LAB}/pubkey` (default `http://localhost:8200`), fetched once and cached. The trial service never reads the lab's key file.
+
+### Wallet presentation endpoints
+- `GET /present/pending?request_id=` validates `request_id` as 32 lowercase hex, fetches the request and trial name from `GENEMATCH_TRIAL` server-side, and returns `{request_id, trial_name, gene, finding, status, has_matching_claim}`.
+- `POST /present {request_id, approve}` re-fetches the request server-side (it never trusts nonce or trial ID from the browser). If `approve` is false it returns `{status: "declined"}` and sends nothing. Otherwise it picks exactly one claim with `select_claim`; if none matches it returns `{status: "no_matching_claim", reason}` and sends nothing. Else it signs with `holder_seed`, posts `{presentation}`, records what it sent for `/check/seen`, and returns the trial's `{status, code, reason}`.
+- `/check/seen` adds a `trial` party listing each presentation sent: trial ID, the single claim's gene and finding, "claims shared: 1", and the nonce as an 8-hex prefix.
 
 ### Limitations
 - The same claim shown to two verifiers is linkable, because it is the same signed object. Unlinkable presentation needs BBS+ signatures or a ZK proof; noted as future work.

@@ -1,0 +1,8 @@
+[
+  {"trial_id": "parp-demo-01", "name": "PARP inhibitor study (demo)",
+   "summary": "Synthetic demo trial for adults with a germline BRCA1 pathogenic variant.",
+   "required": {"gene": "BRCA1", "finding": "germline pathogenic variant"}},
+  {"trial_id": "parp-demo-02", "name": "BRCA2 maintenance study (demo)",
+   "summary": "Synthetic demo trial for adults with a germline BRCA2 pathogenic variant.",
+   "required": {"gene": "BRCA2", "finding": "germline pathogenic variant"}}
+]

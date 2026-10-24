@@ -38,6 +38,14 @@ EXPECTED = {1: ["CFTR"], 2: [], 3: ["HBB", "SMN1"]}
 HEX8 = re.compile(r"^[0-9a-f]{8}$")
 
 
+def assert_owner_only(path: Path) -> None:
+    """chmod 600 on macOS/Linux. Windows has no POSIX modes (chmod only toggles
+    read-only), so there we only check the file exists and is readable."""
+    assert path.is_file() and path.read_bytes()
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
 @pytest.fixture
 def var(tmp_path, monkeypatch):
     monkeypatch.setenv("GENEMATCH_VAR", str(tmp_path))
@@ -235,7 +243,7 @@ def test_relay_sessions_expire_after_24h(rc):
 def test_lab_keys_persist_and_are_private(tmp_path):
     path = tmp_path / "lab_keys.json"
     assert keys.load_or_create(path) == keys.load_or_create(path)
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert_owner_only(path)
 
 
 def test_lab_issuance_closed_by_default(tmp_path, monkeypatch):
@@ -276,7 +284,7 @@ def test_seed_writes_valid_wallets(var):
     files = sorted((var / "wallets").glob("*.json"))
     assert {f.stem for f in files} == set(seed_demo.PEOPLE)
     for f in files:
-        assert stat.S_IMODE(f.stat().st_mode) == 0o600
+        assert_owner_only(f)
         w = json.loads(f.read_text())
         assert w["genes"] == sorted(seed_demo.PEOPLE[w["person_id"]][0])
         Session("initiator", "count", "s1", w["credential"], w["genes"], w["lab_pubkey"])
@@ -328,7 +336,8 @@ def test_seen_shows_only_prefixes_and_counts(var):
         return (await wa.get("/check/seen")).json(), sid
     seen, sid = asyncio.run(go())
     parties = {p["party"]: p["items"] for p in seen["parties"]}
-    assert set(parties) == {"me", "partner", "relay", "agent"}
+    assert set(parties) == {"me", "partner", "relay", "agent", "trial"}
+    assert parties["trial"] == []  # no presentations sent
     assert len(relay_log(sid)) == 6
     # 6 round entries plus 5 signed-metadata items for each side's round 1.
     assert len(parties["relay"]) == 6 + 2 * 5
@@ -357,7 +366,11 @@ def test_seen_shows_only_prefixes_and_counts(var):
     # No full hashes or signatures anywhere in the panel.
     blob = json.dumps(seen)
     assert not re.search(r"[0-9a-f]{16,}", blob)
-    assert parties["agent"] == []  # no counselor installed: nothing sent to the agent
+    # The template counselor is installed: in Detail mode it receives only the
+    # panel entries for the agreed shared genes (CFTR for alex/sam), nothing else.
+    agent_input = parties["agent"][0]["value"] if parties["agent"] else None
+    if agent_input is not None:
+        assert [e["gene"] for e in agent_input["shared"]] == ["CFTR"]
 
 
 @pytest.mark.parametrize("mode", ["count", "detail"])
@@ -585,6 +598,7 @@ def test_counselor_failure_does_not_break_the_result(var, monkeypatch):
 
 def test_demo_backend_script_passes():
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "demo_backend.py")],
-                       capture_output=True, text=True, timeout=120, cwd=ROOT)
+                       capture_output=True, text=True, encoding="utf-8", timeout=120,
+                       cwd=ROOT)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "RESULT: all checks passed" in r.stdout

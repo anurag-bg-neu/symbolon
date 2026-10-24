@@ -3,7 +3,9 @@
 Runs the relay and two wallets in-process (httpx.ASGITransport), seeds a temp
 var/ directory, runs all three demo couples in both modes plus failure cases.
 Synthetic data only. Exit code 1 on any mismatch.
-Run from the repo root: .venv/bin/python scripts/demo_backend.py
+Run from the repo root:
+  macOS/Linux: .venv/bin/python scripts/demo_backend.py
+  Windows:     .venv\\Scripts\\python.exe scripts\\demo_backend.py
 """
 
 from __future__ import annotations
@@ -14,6 +16,12 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+
+# Windows consoles and pipes default to cp1252, which cannot print the box-drawing
+# characters below. Force UTF-8 so the script behaves the same on every OS.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -34,7 +42,7 @@ failures: list[str] = []
 
 
 def check(label: str, ok: bool, text: str) -> None:
-    print(f"  {label:<19}-> {text:<46}{'OK' if ok else 'MISMATCH'}")
+    print(f"  {label:<22}-> {text:<46}{'OK' if ok else 'MISMATCH'}")
     if not ok:
         failures.append(label)
 
@@ -121,6 +129,31 @@ async def main() -> int:
     sent = [e for e in relay.SESSIONS[sid]["log"] if e["role"] == "joiner"]
     check("tampered wallet", code == "BAD_CREDENTIAL" and not sent,
           f"{code}, {len(sent)} messages sent")
+
+    print("\n── Trial eligibility (selective disclosure) ──")
+    from trial import service as trial_service
+    trial_app = trial_service.create_app(lab_pubkey=pub)
+    tc = client(trial_app, "trial")
+
+    async def ask(person: str, trial_id: str):
+        w = client(create_app(person, RC, tc), person)
+        req = (await tc.post("/requests", json={"trial_id": trial_id})).json()
+        out = (await w.post("/present", json={"request_id": req["request_id"],
+                                               "approve": True})).json()
+        st = (await tc.get(f"/requests/{req['request_id']}")).json()
+        return req, out, st
+
+    req, out, st = await ask("alex", "parp-demo-01")
+    check("alex -> BRCA1 trial", out["status"] == "eligible" and st["received"]["claims"] == 1,
+          f"{out['status']}, trial received {st['received']['claims']} claim")
+    replay = (await tc.post(f"/requests/{req['request_id']}/present",
+                            json={"presentation": {}})).json()
+    check("replayed request", replay["code"] == "NONCE_REUSED", str(replay["code"]))
+    _, out, st = await ask("morgan", "parp-demo-01")
+    check("morgan -> BRCA1 trial", out["status"] == "no_matching_claim"
+          and st["received"]["claims"] == 0, f"{out['status']}, nothing sent")
+    _, out, _ = await ask("morgan", "parp-demo-02")
+    check("morgan -> BRCA2 trial", out["status"] == "eligible", out["status"])
 
     print("\nRESULT:", "all checks passed" if not failures else f"FAILED: {failures}")
     return 0 if not failures else 1

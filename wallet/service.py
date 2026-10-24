@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.models import Mode, ProtocolError, Result
+from core.claims import make_presentation, select_claim
+from core.models import Mode, ProtocolError, Result, SignedClaim
 from core.protocol import Session
 from lab import keys
 
@@ -44,6 +46,17 @@ STOPPED = {"declined": "PEER_DECLINED", "failed": "PEER_FAILED",
 FORBIDDEN_ORIGIN = {"code": "FORBIDDEN_ORIGIN", "user_message":
                     "This request came from another website, so it was refused. "
                     "Nothing was shared."}
+REQUEST_ID = re.compile(r"^[0-9a-f]{32}$")
+TRIAL_UNAVAILABLE = {"code": "TRIAL_UNAVAILABLE", "user_message":
+                     "We couldn't reach the trial site, so nothing was shared. "
+                     "Please try again."}
+UNKNOWN_REQUEST = {"code": "UNKNOWN_REQUEST", "user_message":
+                   "This trial request doesn't exist or has expired. Nothing was shared."}
+
+
+class PresentBody(BaseModel):
+    request_id: str
+    approve: bool
 
 
 def _same_origin(request: Request) -> bool:
@@ -86,11 +99,15 @@ def _signed_meta(round1: dict[str, Any]) -> dict[str, Any]:
 
 
 def create_app(person_id: str | None = None,
-               relay: httpx.AsyncClient | None = None) -> FastAPI:
+               relay: httpx.AsyncClient | None = None,
+               trial: httpx.AsyncClient | None = None) -> FastAPI:
     person_id = person_id or os.environ.get("GENEMATCH_PERSON", "alex")
     wallet = json.loads((keys.var_dir() / "wallets" / f"{person_id}.json").read_text())
     relay = relay or httpx.AsyncClient(
         base_url=os.environ.get("GENEMATCH_RELAY", "http://localhost:8000"), timeout=5)
+    trial = trial or httpx.AsyncClient(
+        base_url=os.environ.get("GENEMATCH_TRIAL", "http://localhost:8300"), timeout=5)
+    presentations: list[dict[str, Any]] = []  # what this wallet sent to trials
     poll = float(os.environ.get("GENEMATCH_POLL", "0.5"))
     panel = {e["gene"]: e for e in keys.load_panel()}
     app = FastAPI(title=f"GeneMatch wallet ({person_id})")
@@ -315,7 +332,79 @@ def create_app(person_id: str | None = None,
             {"party": "agent", "items": [{"label": "counselor input",
                                           "value": check["counselor_input"]}]
              if check["counselor_input"] is not None else []},
+            {"party": "trial", "items": [item for p in presentations for item in (
+                {"label": f"claims shared with {p['trial_id']}", "value": 1},
+                {"label": f"finding shared with {p['trial_id']}",
+                 "value": f"{p['gene']}: {p['finding']}"},
+                {"label": f"challenge from {p['trial_id']}", "value": p["nonce"][:8]},
+            )]},
         ]}
+
+    # --- trial eligibility (selective disclosure) ----------------------------
+
+    def claims() -> list[SignedClaim]:
+        return [SignedClaim.model_validate(c) for c in wallet["claims"]]
+
+    async def fetch_request(request_id: str) -> dict[str, Any] | JSONResponse:
+        """The trial's request, fetched server-side. Never trust nonces from the page."""
+        if not REQUEST_ID.match(request_id):
+            return JSONResponse({"error": UNKNOWN_REQUEST}, status_code=400)
+        try:
+            r = await trial.get(f"/requests/{request_id}")
+            trials = (await trial.get("/trials")).json() if r.status_code == 200 else []
+        except httpx.HTTPError:
+            return JSONResponse({"error": TRIAL_UNAVAILABLE}, status_code=502)
+        if r.status_code == 404:
+            return JSONResponse({"error": UNKNOWN_REQUEST}, status_code=404)
+        if r.status_code != 200:
+            return JSONResponse({"error": TRIAL_UNAVAILABLE}, status_code=502)
+        data = r.json()
+        names = {t["trial_id"]: t["name"] for t in trials}
+        data["trial_name"] = names.get(data["request"]["trial_id"], data["request"]["trial_id"])
+        return data
+
+    @app.get("/present/pending")
+    async def present_pending(request_id: str):
+        data = await fetch_request(request_id)
+        if isinstance(data, JSONResponse):
+            return data
+        req = data["request"]
+        try:
+            select_claim(claims(), req["gene"], req["finding"])
+            has = True
+        except ProtocolError:
+            has = False
+        return {"request_id": request_id, "trial_name": data["trial_name"],
+                "gene": req["gene"], "finding": req["finding"], "status": data["status"],
+                "has_matching_claim": has}
+
+    @app.post("/present")
+    async def present(body: PresentBody):
+        if not body.approve:
+            return {"status": "declined", "code": None,
+                    "reason": "You declined the request. Nothing was shared."}
+        data = await fetch_request(body.request_id)
+        if isinstance(data, JSONResponse):
+            return data
+        req = data["request"]
+        if data["status"] != "pending":
+            return {"status": data["status"], "code": data["code"], "reason": data["reason"]}
+        try:
+            claim = select_claim(claims(), req["gene"], req["finding"])
+        except ProtocolError as e:
+            return {"status": "no_matching_claim", "code": e.code, "reason": e.user_message}
+        p = make_presentation(claim, bytes.fromhex(wallet["holder_seed"]),
+                              req["nonce"], req["trial_id"])
+        try:
+            r = await trial.post(f"/requests/{body.request_id}/present",
+                                 json={"presentation": p.model_dump()})
+        except httpx.HTTPError:
+            return JSONResponse({"error": TRIAL_UNAVAILABLE}, status_code=502)
+        presentations.append({"trial_id": req["trial_id"], "gene": claim.gene,
+                              "finding": claim.finding, "nonce": req["nonce"]})
+        if r.status_code != 200:
+            return JSONResponse({"error": TRIAL_UNAVAILABLE}, status_code=502)
+        return r.json()
 
     if STATIC.is_dir():
         app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

@@ -1,7 +1,9 @@
 """Issue credentials for the demo people and write var/wallets/<person_id>.json.
 
 In-process, no HTTP. Synthetic data only.
-Run from the repo root: .venv/bin/python scripts/seed_demo.py
+Run from the repo root:
+  macOS/Linux: .venv/bin/python scripts/seed_demo.py
+  Windows:     .venv\\Scripts\\python.exe scripts\\seed_demo.py
 """
 
 from __future__ import annotations
