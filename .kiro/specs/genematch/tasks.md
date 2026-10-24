@@ -52,11 +52,13 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: 1.1, 1.2, 4.1, 5.1, 5.4_
   - [x] 1.4 Write unit tests for commutativity, domain separation, invalid and identity point rejection, commitment determinism, and signatures (valid, tampered, wrong key)
     - _Requirements: 1.1, 1.2, 4.3, 5.4_
+  - [x] 1.5 Add the repository-local `crypto-rules-guard` hook and document its safeguards in the specification and `KIRO.md`
+    - _Requirements: none (tooling)_
 
 - [ ] 2. Gene panel and lab service
   - [ ] 2.1 **P3**, 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
     - _Requirements: 1.3, 6.1_
-  - [ ] 2.2 **P1**: `core/issuance.py` (`issue`, with panel, AR, duplicate, `MAX_SET`, and `CLAIM_GENES` checks, and the `salt_commitment` flag). **P2**, 13:15–13:45: `lab/keys.py` (`load_or_create`) and `lab/service.py` (`POST /credentials`, `GET /pubkey`), reading `GENEMATCH_COMMIT_SALT` and passing it to `issue`
+  - [x] 2.2 **P1**: `core/issuance.py` (`issue`, with panel, AR, duplicate, `MAX_SET`, and `CLAIM_GENES` checks, and the `salt_commitment` flag). **P2**, 13:15–13:45: `lab/keys.py` (`load_or_create`) and `lab/service.py` (`POST /credentials`, `GET /pubkey`), reading `GENEMATCH_COMMIT_SALT` and passing it to `issue`
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
   - [ ] 2.3 **P2**, 13:45–14:00: write `scripts/seed_demo.py` (in-process, no HTTP) to issue credentials for the three demo couples in design.md and write `var/wallets/<person_id>.json`
     - _Requirements: 7.2_

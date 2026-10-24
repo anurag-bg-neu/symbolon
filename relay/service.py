@@ -142,7 +142,10 @@ def post_round(body: RoundBody, sid: str, n: int = Path(ge=0, le=2)) -> dict:
 
 @app.get("/sessions/{sid}/round/{n}")
 def get_round(sid: str, role: Role, n: int = Path(ge=0, le=2)):
-    rounds = _get(sid)["rounds"]
+    sess = _get(sid)
+    if sess["state"] in ("failed", "declined"):
+        raise HTTPException(409, f"session {sess['state']}")
+    rounds = sess["rounds"]
     peer = PEER[role]
     both_committed = (0, "initiator") in rounds and (0, "joiner") in rounds
     releasable = (n, peer) in rounds and (n == 2 or both_committed)

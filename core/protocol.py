@@ -57,9 +57,9 @@ def _guarded(fn: F) -> F:
             self._fail()
             raise
         except ValidationError:
-            # Malformed peer message (bad hex, wrong length, missing field).
+            # Malformed peer message (bad hex, wrong type, missing or extra field).
             self._fail()
-            raise ProtocolError("INVALID_POINT", "schema") from None
+            raise ProtocolError("MALFORMED_MESSAGE", "schema") from None
         except Exception:
             self._fail()
             raise

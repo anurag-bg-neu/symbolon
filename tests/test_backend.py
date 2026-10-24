@@ -201,8 +201,20 @@ def test_lab_keys_persist_and_are_private(tmp_path):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_lab_issuance_closed_by_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("GENEMATCH_VAR", str(tmp_path))
+    monkeypatch.delenv("GENEMATCH_LAB_OPEN", raising=False)
+    from lab.service import app
+    c = TestClient(app)
+    r = c.post("/credentials", json={"person_id": "mallory", "genes": sorted(PANEL_GENES)[:8],
+                                     "holder_pubkey": "11" * 32})
+    assert r.status_code == 403 and "credential" not in r.text
+    assert c.get("/pubkey").status_code == 200  # the public key stays public
+
+
 def test_lab_service(tmp_path, monkeypatch):
     monkeypatch.setenv("GENEMATCH_VAR", str(tmp_path))
+    monkeypatch.setenv("GENEMATCH_LAB_OPEN", "1")
     from lab.service import app
     c = TestClient(app)
     pub = c.get("/pubkey").json()["ed25519_pubkey"]
@@ -400,7 +412,9 @@ def test_tampered_wallet_sends_nothing(var, field):
 
     sa, sb, *_, sid = asyncio.run(run_check("alex", "sam", "detail"))
     assert sb["state"] == "failed" and sb["error"]["code"] == "BAD_CREDENTIAL"
+    # Alex is told his partner stopped the check, not that it expired.
     assert sa["state"] == "failed" and sa["result"] is None
+    assert sa["error"]["code"] == "PEER_FAILED"
     assert not [e for e in relay_log(sid) if e["role"] == "joiner"]
 
 
@@ -411,7 +425,11 @@ def test_forged_partner_is_rejected(var):
     seed_demo.write_wallet(var, "sam", ["CFTR", "HEXA"], [], rogue.k_lab, rogue.seed,
                            keys.load_panel())
     sa, sb, *_, sid = asyncio.run(run_check("alex", "sam", "detail"))
-    assert sa["state"] == "failed" and sa["error"]["code"] == "BAD_SIGNATURE"
+    # Each side rejects the other's lab signature; whoever checks first reports
+    # BAD_SIGNATURE and tells the relay, and the other may then see PEER_FAILED.
+    codes = {sa["error"]["code"], sb["error"]["code"]}
+    assert sa["state"] == sb["state"] == "failed"
+    assert "BAD_SIGNATURE" in codes and codes <= {"BAD_SIGNATURE", "PEER_FAILED"}
     assert sa["result"] is None and sb["result"] is None
     assert not [e for e in relay_log(sid) if e["round"] == 2]
 
@@ -434,6 +452,52 @@ def test_accept_without_join_is_refused(var):
         return await w.post("/check/accept")
     r = asyncio.run(go())
     assert r.status_code == 400 and r.json()["error"]["code"] == "OUT_OF_ORDER"
+
+
+def test_relay_stops_releasing_rounds_after_failure(rc):
+    sid = _accepted(rc)
+    _post(rc, sid, 0, "initiator")
+    _post(rc, sid, 0, "joiner")
+    assert rc.get(f"/sessions/{sid}/round/0", params={"role": "joiner"}).status_code == 200
+    rc.post(f"/sessions/{sid}/fail", json={"role": "joiner"})
+    assert rc.get(f"/sessions/{sid}/round/0", params={"role": "joiner"}).status_code == 409
+
+
+@pytest.mark.parametrize("headers,allowed", [
+    ({}, True),                                               # curl, tests, server-side
+    ({"Origin": "http://sam"}, True),                         # the wallet's own page
+    ({"Origin": "https://evil.example"}, False),              # another website
+    ({"Origin": "http://localhost:8300"}, False),             # another local service
+    ({"Origin": "null"}, False),                              # sandboxed iframe, file://
+    ({"Sec-Fetch-Site": "cross-site"}, False),                # no Origin, still cross-site
+])
+def test_wallet_refuses_cross_origin_posts(var, headers, allowed):
+    async def go():
+        rc = relay_client()
+        wa, wb = wallet_client("alex", rc), wallet_client("sam", rc)
+        s = (await wa.post("/check/start", json={"mode": "detail"})).json()
+        await wb.post("/check/join", json={"invite_code": s["invite_code"]})
+        # A form-style "simple" request: no JSON, so no CORS preflight in a browser.
+        r = await wb.post("/check/accept", headers={**headers, "Content-Type": "text/plain"})
+        return r, (await wb.get("/check/status")).json()["state"], s["session_id"]
+    r, state, sid = asyncio.run(go())
+    if allowed:
+        assert r.status_code == 200 and state == "running"
+    else:
+        assert r.status_code == 403 and r.json()["error"]["code"] == "FORBIDDEN_ORIGIN"
+        assert state == "awaiting_accept" and relay.SESSIONS[sid]["state"] == "joined"
+
+
+def test_counselor_failure_does_not_break_the_result(var, monkeypatch):
+    fake = types.ModuleType("agent.counselor")
+
+    def boom(result, panel):
+        raise RuntimeError("model unavailable")
+    fake.explain = boom
+    monkeypatch.setitem(sys.modules, "agent.counselor", fake)
+    sa, sb, *_ = asyncio.run(run_check("casey", "morgan", "detail"))
+    assert sa["state"] == "done" and sa["result"]["shared_genes"] == ["HBB", "SMN1"]
+    assert sa["explanation"] is None
 
 
 # --- demo script ------------------------------------------------------------

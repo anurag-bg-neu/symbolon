@@ -133,7 +133,7 @@ Wallet call sequence (P2): `s = Session(...)`; post `s.round0()` to round 0; whe
 - `select_claim(claims, gene, finding) -> SignedClaim` returns exactly one matching claim or raises `NO_MATCHING_CLAIM`.
 
 ### lab/service.py (port 8200)
-- `POST /credentials {person_id, genes[], findings[], holder_pubkey} -> {credential, claims}`
+- `POST /credentials {person_id, genes[], findings[], holder_pubkey} -> {credential, claims}`. Returns 403 unless `GENEMATCH_LAB_OPEN=1`. It is unauthenticated, and an open endpoint lets anyone mint tokens for any genes and probe a partner for them, which defeats the point of lab tokens. The seed script issues in-process and does not need it. Never enable it on a deployed service.
 - `GET /pubkey -> {ed25519_pubkey}`
 
 ### relay/service.py (port 8000, in-memory store)
@@ -142,12 +142,15 @@ Wallet call sequence (P2): `s = Session(...)`; post `s.round0()` to round 0; whe
 - `POST /sessions/{id}/accept`, `POST /sessions/{id}/decline`, `POST /sessions/{id}/fail {role}`
 - `GET /sessions/{id}/state -> {state, mode}`, where state is `waiting | joined | accepted | declined | failed | expired | done`.
 - `POST /sessions/{id}/round/{n} {role, payload}` with `n` in 0–2 and role `initiator | joiner`. Rounds are refused before `accepted`.
-- `GET /sessions/{id}/round/{n}?role=` returns the peer's payload when releasable, else 204. Release rules: round 0 only once both commitments are in; round 1 only once both commitments are in and the peer posted round 1; round 2 once the peer posted it.
+- `GET /sessions/{id}/round/{n}?role=` returns the peer's payload when releasable, else 204. Release rules: round 0 only once both commitments are in; round 1 only once both commitments are in and the peer posted round 1; round 2 once the peer posted it. Returns 409 once the session is `failed` or `declined`.
 - `GET /sessions/{id}/log -> [{t, role, round, kind, prefixes: [8-hex]}]`
 - Sessions and their data are deleted 24 hours after creation.
 
 ### wallet/service.py (ports 8101 and 8102)
-Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the relay every 500 ms while a check is active. Calls the counselor in-process once a result exists.
+Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the relay every 500 ms while a check is active. Calls the counselor in-process once a result exists, and sets `state` to `done` only after the explanation (or its failure) is recorded.
+
+- CSRF guard: POST requests are refused with 403 `FORBIDDEN_ORIGIN` if they carry an `Origin` other than the wallet's own, or `Sec-Fetch-Site: cross-site`. Browsers send cross-site form and `text/plain` posts without CORS preflight, so without this any web page could accept a check on the user's behalf (Req 3.2). The wallet UI must call its own backend from its own origin.
+- When the relay reports `failed`, the wallet shows `PEER_FAILED`. On any abort, including unexpected errors, it posts `/fail` so the partner stops waiting. Unexpected errors are logged by type name only.
 
 | Endpoint | Request | Response |
 |---|---|---|
@@ -240,8 +243,8 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 | Adversary | Can they... | Mitigation |
 |---|---|---|
 | Relay (honest-but-curious) | Learn genes or result? | Sees only blinded points; scalars never leave wallets; result computed locally. |
-| Relay (active) | Swap, reflect, or replay messages? | Partially mitigated. Round-0 commitments bind session ID, mode, and role, so reflection, cross-session splicing or replay, and a mode split abort with `COMMITMENT_MISMATCH`; lab signatures cover metadata. Round 2 is unauthenticated: valid but wrong points force a false "no match" (needs DLEQ proofs). |
-| Partner (malicious) | Fake a match or a different result? | **Not prevented.** Whoever posts round 2 second has seen the other's points and can copy or replace them, so the two outputs may differ. Fairness and round-2 integrity need DLEQ proofs. |
+| Relay (active) | Swap, reflect, or replay messages? | Partially mitigated. Round-0 commitments bind session ID, mode, and role, so reflection, cross-session splicing or replay, and a mode split abort with `COMMITMENT_MISMATCH`; lab signatures cover metadata. **Round 2 is unauthenticated, so the relay alone can fake either result.** Valid but wrong points force a false "no match". Echoing a wallet's own round 2 back to it forces a false match on up to min(counts) genes, because the relay holds both round-2 messages. Needs DLEQ proofs (S1b). |
+| Partner (malicious) | Fake a match or a different result? | **Not prevented.** Whoever posts round 2 second has seen the other's points and can copy or replace them, so the two outputs may differ. In Detail mode the partner knows which of my slots match and can reorder its round 2, so I name the wrong gene. Fairness and round-2 integrity need DLEQ proofs. The UI must not present a result as guaranteed. |
 | Partner (malicious) | Probe all panel genes? | Needs lab tokens (requires `k_lab`); signed count caps set size. |
 | Partner | Invent a carrier gene? | Cannot create a valid token without `k_lab`. |
 | Partner | Adapt input after seeing mine? | Commit-then-reveal. |
@@ -259,6 +262,23 @@ Residual risks, stated plainly in the README:
 - Scalar zeroing is best-effort in Python.
 - A compromised lab key breaks everything; the design is not post-quantum.
 
+## Development safeguards
+
+AI-assisted changes receive an additional cryptographic review because a plausible "simplification" can quietly remove a security property. For example, changing PSI to operate on raw `H(g)` values instead of lab-authorized `T_g = k_lab · H(g)` values would let a malicious partner enumerate the small gene panel and probe the other participant's entire carrier set.
+
+The repository-local `crypto-rules-guard` agent hook runs after a Python file under `core/` is saved. It reviews the changed file and relevant tests, reports each violation with its file, line, broken rule, and a proposed fix, and never edits the file silently. A clean review emits only `crypto-rules-guard: pass`.
+
+| Guard rule | Threat-model entry protected |
+|---|---|
+| Derive gene points only as `H(g) = crypto_core_ristretto255_from_hash(SHA-512(b"genematch/v1/gene/" + gene_id))`. | **Partner (malicious) — Probe all panel genes?** and **Partner — Invent a carrier gene?** Consistent, domain-separated gene points preserve the authorized-token construction used against panel probing. |
+| Generate scalars only with `crypto_core_ristretto255_scalar_random()`, never `random`, `secrets`, `os.urandom`, or constants. | **Relay (honest-but-curious) — Learn genes or result?** Strong scalar generation prevents weak-randomness failures that could expose blinded values. |
+| Validate every point received from another party with `crypto_core_ristretto255_is_valid_point` and reject the identity. | **Partner (malicious) — Fake a match or a different result?** This blocks invalid-curve or identity-point attacks at the point-validation boundary; it does not close the separately documented unauthenticated round-2 limitation. |
+| Run PSI only on lab tokens `T_g = k_lab · H(g)`, never raw `H(g)`. | **Partner (malicious) — Probe all panel genes?** and **Partner — Invent a carrier gene?** Requiring the lab key prevents arbitrary small-domain panel probes. |
+| Never log, print, or include a secret scalar, lab key, or token in an error message. | **Relay (honest-but-curious) — Learn genes or result?** and **AI agent / LLM provider — Learn genetic data?** This prevents secret leakage through observability and diagnostics. |
+| Give every crypto function both a positive and a negative test in `tests/`. | Regression protection for all entries above: panel probing, invalid-curve or identity-point attacks, weak randomness, and secret leakage. |
+
+`.kiro/steering/tech.md` is the normative source for these rules. The hook is required to read that file on every review, and this safeguards section describes that same policy rather than defining an independent copy, so the hook and specification cannot drift apart.
+
 ## Stretch designs
 
 - **S1: Prove no hiding.** Prove in zero knowledge that the blinded set is `{a · T}` for exactly the tokens committed in the signed credential. This needs elliptic-curve operations in-circuit, so the token curve should match the circuit's embedded curve (for example Grumpkin in Noir) rather than ristretto255. It is research-grade for a single day, so treat it as design-only unless ahead of schedule. The salted commitment carries over: the salt becomes a private witness, so the public commitment stays unlinkable.
@@ -267,7 +287,7 @@ Residual risks, stated plainly in the README:
 - **S3: Post-quantum.** Genomic data stays sensitive for life, so harvest-now-decrypt-later is a real threat, and DH-PSI is not quantum-safe. Sketch a path through lattice-based OPRFs in the README.
 
 ## Error handling
-- All protocol failures raise `ProtocolError(code, reason=None)`; `user_message` comes from `core.models.USER_MESSAGES`, and `reason` is internal only (never shown, never sensitive). Codes: `BAD_SIGNATURE`, `COMMITMENT_MISMATCH`, `COUNT_MISMATCH`, `SET_TOO_LARGE`, `INVALID_POINT`, `PEER_DECLINED`, `SESSION_EXPIRED`, `RELAY_UNAVAILABLE`, `OUT_OF_ORDER`, `BAD_CREDENTIAL` (own wallet file failed verification; nothing was sent), and for trials `BAD_LAB_SIG`, `BAD_HOLDER_SIG`, `NONCE_REUSED`, `NONCE_EXPIRED`, `WRONG_FINDING`, `NO_MATCHING_CLAIM`, `REQUEST_MISMATCH` (nonce or trial ID differs from the request). The UI shows the user message, for example: "Your partner's results couldn't be verified as coming from the lab, so the check was stopped. Nothing about you was revealed."
+- All protocol failures raise `ProtocolError(code, reason=None)`; `user_message` comes from `core.models.USER_MESSAGES`, and `reason` is internal only (never shown, never sensitive). Codes: `BAD_SIGNATURE`, `COMMITMENT_MISMATCH`, `COUNT_MISMATCH`, `SET_TOO_LARGE`, `INVALID_POINT`, `PEER_DECLINED`, `PEER_FAILED` (the partner's wallet stopped the check), `SESSION_EXPIRED`, `RELAY_UNAVAILABLE`, `OUT_OF_ORDER`, `MALFORMED_MESSAGE` (a peer message failed schema validation: bad hex, wrong type, missing or extra field; wire models are strict and never coerce), `BAD_CREDENTIAL` (own wallet file failed verification; nothing was sent), and for trials `BAD_LAB_SIG`, `BAD_HOLDER_SIG`, `NONCE_REUSED`, `NONCE_EXPIRED`, `WRONG_FINDING`, `NO_MATCHING_CLAIM`, `REQUEST_MISMATCH` (nonce or trial ID differs from the request). The UI shows the user message, for example: "Your partner's results couldn't be verified as coming from the lab, so the check was stopped. Nothing about you was revealed."
 - On any abort, the wallet zeroes the scalar and marks the session failed at the relay.
 
 ## Testing strategy

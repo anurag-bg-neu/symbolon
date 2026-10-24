@@ -48,7 +48,8 @@ Hex64 = Annotated[str, AfterValidator(_hex_len(64))]
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=False)
+    # strict: no silent coercion ("3", True, or 3.0 for an int); extra: no smuggled fields.
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=False)
 
 
 # --- Credentials and claims --------------------------------------------------
@@ -168,6 +169,14 @@ USER_MESSAGES: dict[str, str] = {
     ),
     "PEER_DECLINED": (
         "Your partner declined the check. No data was exchanged."
+    ),
+    "PEER_FAILED": (
+        "Your partner's wallet stopped the check, so no result was produced. "
+        "Nothing about you was revealed."
+    ),
+    "MALFORMED_MESSAGE": (
+        "Your partner's data wasn't in the expected format, "
+        "so the check was stopped. Nothing about you was revealed."
     ),
     "SESSION_EXPIRED": (
         "This check expired before it finished, and its data was deleted. "

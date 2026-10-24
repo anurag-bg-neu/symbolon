@@ -33,6 +33,17 @@ def salt_flag() -> bool:
     return os.environ.get("GENEMATCH_COMMIT_SALT", "1") != "0"
 
 
+def issuing_open() -> bool:
+    """POST /credentials is off unless GENEMATCH_LAB_OPEN=1.
+
+    The endpoint has no authentication, and lab tokens are only meaningful if the
+    lab issues real results. An open endpoint lets anyone mint tokens for any genes
+    (up to MAX_SET) and probe a partner for them. The seed script issues in-process
+    and does not need it. Never enable it on a deployed service.
+    """
+    return os.environ.get("GENEMATCH_LAB_OPEN", "0") == "1"
+
+
 @app.get("/pubkey")
 def pubkey() -> dict:
     _, seed = keys.load_or_create()
@@ -41,6 +52,8 @@ def pubkey() -> dict:
 
 @app.post("/credentials")
 def credentials(req: CredentialRequest) -> dict:
+    if not issuing_open():
+        raise HTTPException(403, "issuance over HTTP is disabled (set GENEMATCH_LAB_OPEN=1)")
     k_lab, seed = keys.load_or_create()
     try:
         cred, claims = issue(k_lab, seed, req.person_id, req.genes,

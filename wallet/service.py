@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -34,8 +34,25 @@ MODE_TEXT = {
               "Neither of you learns the genes only the other carries.",
 }
 # Relay states that mean the other side stopped the check.
-STOPPED = {"declined": "PEER_DECLINED", "failed": "SESSION_EXPIRED",
+STOPPED = {"declined": "PEER_DECLINED", "failed": "PEER_FAILED",
            "expired": "SESSION_EXPIRED"}
+FORBIDDEN_ORIGIN = {"code": "FORBIDDEN_ORIGIN", "user_message":
+                    "This request came from another website, so it was refused. "
+                    "Nothing was shared."}
+
+
+def _same_origin(request: Request) -> bool:
+    """CSRF guard for state-changing requests.
+
+    Browsers attach Origin to cross-site POSTs, including "simple" ones (form posts,
+    text/plain fetches) that skip CORS preflight. Allow a POST only if it carries no
+    Origin (curl, tests, server-side callers) or an Origin equal to this wallet's own.
+    """
+    origin = request.headers.get("origin")
+    if origin is None:
+        return request.headers.get("sec-fetch-site") in (None, "same-origin", "none")
+    host = request.headers.get("host", "")
+    return origin in (f"http://{host}", f"https://{host}")
 
 
 class StartBody(BaseModel):
@@ -67,6 +84,12 @@ def create_app(person_id: str | None = None,
     @app.exception_handler(ProtocolError)
     async def protocol_error(_req, e: ProtocolError):
         return JSONResponse({"error": e.to_dict()}, status_code=400)
+
+    @app.middleware("http")
+    async def csrf_guard(request: Request, call_next):
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not _same_origin(request):
+            return JSONResponse({"error": FORBIDDEN_ORIGIN}, status_code=403)
+        return await call_next(request)
 
     # --- relay calls -------------------------------------------------------
 
@@ -102,6 +125,12 @@ def create_app(person_id: str | None = None,
             await relay_state(sid)
             await asyncio.sleep(poll)
 
+    async def tell_relay_failed(sid: str, role: str) -> None:
+        try:
+            await relay.post(f"/sessions/{sid}/fail", json={"role": role})
+        except httpx.HTTPError:
+            pass
+
     # --- the check itself --------------------------------------------------
 
     async def run(check: dict[str, Any]) -> None:
@@ -127,23 +156,27 @@ def create_app(person_id: str | None = None,
         except ProtocolError as e:
             log.info("check failed: %s", e.code)
             check.update(state="failed", error=e.to_dict())
-            if e.code not in ("PEER_DECLINED", "SESSION_EXPIRED", "RELAY_UNAVAILABLE"):
-                try:
-                    await relay.post(f"/sessions/{sid}/fail", json={"role": role})
-                except httpx.HTTPError:
-                    pass
+            # The relay already knows about these, or cannot be reached.
+            if e.code not in ("PEER_DECLINED", "PEER_FAILED", "SESSION_EXPIRED",
+                              "RELAY_UNAVAILABLE"):
+                await tell_relay_failed(sid, role)
             return
-        except Exception:
-            log.exception("unexpected wallet error")
+        except Exception as e:
+            # Type name only: messages and tracebacks can carry protocol data.
+            log.error("unexpected wallet error: %s", type(e).__name__)
             check.update(state="failed", error={
                 "code": "INTERNAL", "user_message":
                 "Something went wrong, so the check was stopped. Nothing about you was revealed."})
+            await tell_relay_failed(sid, role)  # so the partner stops waiting
             return
         finally:
             if s is not None:
                 s.zero()
-        check.update(state="done", result=result.model_dump())
+        # Explain first, then flip to done, so a client that sees "done" also sees
+        # the explanation (or null if there is no counselor or it failed).
+        check["result"] = result.model_dump()
         await counsel(check, result)
+        check["state"] = "done"
 
     async def counsel(check: dict[str, Any], result: Result) -> None:
         """Call P3's counselor if it exists. It sees only the agreed result."""
@@ -151,11 +184,12 @@ def create_app(person_id: str | None = None,
             from agent.counselor import explain
         except ImportError:
             return
-        if result.mode == "count":
-            check["counselor_input"] = {"shared_count": result.shared_count}
-        else:
-            check["counselor_input"] = {"shared": [panel[g] for g in result.shared_genes]}
         try:
+            if result.mode == "count":
+                check["counselor_input"] = {"shared_count": result.shared_count}
+            else:
+                check["counselor_input"] = {
+                    "shared": [panel[g] for g in result.shared_genes]}
             out = await asyncio.to_thread(explain, result, list(panel.values()))
             check["explanation"] = out.model_dump() if hasattr(out, "model_dump") else out
         except Exception:
