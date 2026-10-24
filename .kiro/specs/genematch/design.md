@@ -37,9 +37,9 @@ flowchart LR
 
 Notation is additive (ristretto255). `H(g) = ristretto255_from_hash(SHA-512("genematch/v1/gene/" || g))`.
 
-1. **Issuance.** The lab samples `k_lab` once. For person P with carrier genes `G_P`, it computes `T_g = k_lab · H(g)` for each g in G_P, sorts the tokens' encodings, and sets `C_P = SHA-256("genematch/v1/commit/" || concat(sorted tokens))`. It signs `b"genematch/v1/credential/" || canon({person_id, count, commitment: C_P, issued_at})` with Ed25519. Requirement 1.2 uses this same prefixed commitment.
-2. **Round 0 (commit).** Alex samples `a`, computes `X_A = shuffle({a · T : T in tokens_A})`, and sends `h_A = SHA-256(b"genematch/v1/blinded/" || canon(X_A))`, where `X_A` is encoded as a JSON list of lowercase hex strings. Sam does the same with `b`.
-3. **Round 1 (reveal).** After the relay holds both commitments, each wallet sends its blinded set plus `{person_id, count, commitment, issued_at, lab_sig}`. The receiver checks the hash against the round-0 commitment, verifies the lab signature, checks `|X| == count <= MAX_SET`, and validates every point.
+1. **Issuance.** The lab samples `k_lab` once. For person P with carrier genes `G_P`, it sorts the genes and computes `T_g = k_lab · H(g)` for each, so `tokens[i]` is the token for `genes[i]` (the wallet relies on this order to map matches back to genes). It sets `C_P = SHA-256("genematch/v1/commit/" || salt || concat(sorted token encodings))`, where `salt` is 16 random bytes from `secrets` when the commitment-salt flag is on (default) and empty when it is off (the off form is byte-identical to the original formula). The salt is stored hex-encoded in `Credential.commit_salt`, stays in the wallet, and is not a signed field. It stops two people with identical carrier sets from having identical, linkable commitments. The lab signs `b"genematch/v1/credential/" || canon({person_id, count, commitment: C_P, issued_at})` with Ed25519; the signature covers the tokens through the commitment. Requirement 1.2 uses this same prefixed commitment.
+2. **Round 0 (commit).** Alex samples `a`, computes `X_A = shuffle({a · T : T in tokens_A})`, and sends `h_A = SHA-256(b"genematch/v1/blinded/" || canon({"session_id", "mode", "role", "blinded"}))`, where `blinded` is `X_A` as a JSON list of lowercase hex strings of the raw 32-byte points and `role` is the sender's own role. Binding the session ID, mode, and role defeats a relay that reflects a wallet's own messages back to it, splices or replays messages from another session, or tells the two sides different modes. Sam does the same with `b`.
+3. **Round 1 (reveal).** After the relay holds both commitments, each wallet sends its blinded set plus `{person_id, count, commitment, issued_at, lab_sig}`. The receiver recomputes the round-0 hash with its own session ID, its own mode, and the peer's (opposite) role and compares it to the received commitment, then verifies the lab signature, checks `count <= MAX_SET` and `|X| == count`, and validates every point (no identity, no duplicates).
 4. **Round 2 (double-blind).** Alex sends `Y_B = {a · x : x in X_B}` (same order as X_B in Detail mode, shuffled in Count mode). Sam sends `Y_A = {b · x : x in X_A}` likewise.
 5. **Result.** Alex receives `Y_A = {b · x : x in X_A} = {ab · T : T in tokens_A}` and already holds `Z_B = {a · x : x in X_B} = {ab · T : T in tokens_B}` (the values he sent in round 2). The intersection is `Y_A ∩ Z_B`. In Detail mode, Y_A keeps the order of Alex's own X_A, so he maps matches back to his genes. In Count mode, Y_A arrives shuffled, so only `|Y_A ∩ Z_B|` is learnable. Sam does the symmetric computation.
 
@@ -81,7 +81,8 @@ sequenceDiagram
 | Item | Location | Notes |
 |---|---|---|
 | Lab keys | `var/lab_keys.json` = `{"k_lab": hex, "ed25519_seed": hex}` | `lab.keys.load_or_create()` creates the file on first use and reuses it afterwards, so seeded credentials stay valid across restarts. Demo only. `var/` is gitignored. |
-| Wallet files | `var/wallets/<person_id>.json` = `{"person_id", "genes", "credential", "claims", "holder_seed", "lab_pubkey"}` | Written by `seed_demo.py`, read by the wallet at startup. `genes` is shown only on the owner's home screen and is never sent anywhere. |
+| Wallet files | `var/wallets/<person_id>.json` = `{"person_id", "genes", "credential", "claims", "holder_seed", "lab_pubkey"}` | Written by `seed_demo.py`, read by the wallet at startup. `genes` is shown only on the owner's home screen and is never sent anywhere. `genes` must be in the same (sorted) order as `credential.tokens`. `credential` is the full `Credential.model_dump()`, including `commit_salt`. |
+| Commitment salt flag | env `GENEMATCH_COMMIT_SALT` (`1` default, `0` to turn off) | Read by the lab service and seed script and passed to `issue(..., salt_commitment=...)`. `core/` reads no environment variables. |
 | Wallet identity | env `GENEMATCH_PERSON` (for example `alex`), `GENEMATCH_RELAY` (default `http://localhost:8000`), `GENEMATCH_TRIAL` (default `http://localhost:8300`) | Partner A always runs on 8101 and partner B on 8102. |
 | Couple choice | `COUPLE=1\|2\|3 ./scripts/run_demo.sh` (default 1) | Starts the wallets for that couple. |
 | Counselor | env `BEDROCK_MODEL_ID` (a Claude model enabled in the team's AWS account), `AWS_REGION` (default `us-east-1`) | If `BEDROCK_MODEL_ID` is unset, the template is used. |
@@ -100,28 +101,36 @@ Trial findings are separate from the carrier panel. The lab issues claims only f
 
 ### core/crypto.py
 - `hash_to_group(gene_id: str) -> bytes`
-- `random_scalar() -> bytes`
-- `mul(scalar: bytes, point: bytes) -> bytes` (validates the point, rejects identity)
+- `random_scalar() -> bytearray` (a mutable buffer so it can be zeroed in place)
+- `validate_point(p: bytes) -> bytes`: 32 bytes, a valid ristretto255 encoding, and not the identity (`bytes(32)`, which libsodium's `is_valid_point` accepts); else `ProtocolError("INVALID_POINT")`
+- `mul(scalar, point: bytes) -> bytes` (validates the point, rejects identity input and output)
 - `blind_set(scalar, points) -> list[bytes]`
-- `commit_tokens(tokens) -> bytes` = `SHA-256(b"genematch/v1/commit/" || concat(sorted tokens))`
-- `commit_blinded(points) -> bytes` = `SHA-256(b"genematch/v1/blinded/" || canon([hex(p) for p in points]))`
+- `commit_tokens(tokens: list[bytes], salt: bytes | None = None) -> bytes` = `SHA-256(b"genematch/v1/commit/" || (salt or b"") || concat(sorted tokens))`. `salt` must be exactly 16 raw bytes (not the stored hex string).
+- `commit_blinded(points: list[bytes], *, session_id, mode, role) -> bytes` = `SHA-256(b"genematch/v1/blinded/" || canon({"session_id", "mode", "role", "blinded": [hex(p) for p in points]}))`. Input is raw points; `canon` runs over their lowercase hex list, so nothing is hex-encoded twice.
 - `canon(obj) -> bytes`
-- `sign(seed, prefix, obj) -> hex`, `verify(pubkey, prefix, obj, sig) -> bool` (Ed25519 over `prefix || canon(obj)`)
+- `sign(seed, prefix, obj) -> hex`, `verify(pubkey, prefix, obj, sig) -> bool` (Ed25519 over `prefix || canon(obj)`; `verify` never raises)
 
-### core/issuance.py
-- `issue(k_lab, lab_seed, person_id, genes, findings, holder_pubkey, panel) -> tuple[Credential, list[SignedClaim]]`
-- Rejects genes not in the panel, non-AR genes, more than `MAX_SET = 20` genes, and findings outside `CLAIM_GENES`. The lab HTTP endpoint and the seed script both call this.
+### core/issuance.py (owned by P1)
+- `issue(k_lab, lab_seed, person_id, genes, findings, holder_pubkey, panel, *, salt_commitment=True, now=None) -> tuple[Credential, list[SignedClaim]]`
+- Rejects (with `IssuanceError`) genes not in the panel, non-AR genes, duplicate genes, more than `MAX_SET = 20` genes, findings outside `CLAIM_GENES`, and finding text other than `"germline pathogenic variant"`. The lab HTTP endpoint and the seed script both call this.
+- `credential_signed_fields(cred)` and `claim_signed_fields(claim)` return the exact signed objects, shared by issuance and verification.
 
 ### core/protocol.py
-- `class Session` holding role, mode, scalar, own tokens, and round state.
-- `round0() -> Commitment`, `round1() -> BlindedSet`, `round2(peer: BlindedSet) -> DoubleBlinded`, `result(peer_double: DoubleBlinded) -> Result`
-- `verify_peer(peer, lab_pubkey, commitment)` raises `ProtocolError` with a user-safe message.
-- `zero()` overwrites the scalar; called on completion and on any abort.
+- `class Session(role, mode, session_id, credential, genes, lab_pubkey)` holding the scalar, own tokens, and round state.
+- The constructor checks the wallet's own credential before anything is sent, in this order: lab signature, `len(genes) == count == len(tokens)`, genes sorted and unique, `commit_salt` decodes to exactly 16 bytes if present, every token is a valid point, and `commit_tokens(tokens, salt)` equals `commitment` (constant-time compare). Any failure raises `ProtocolError("BAD_CREDENTIAL")`, with an internal `reason` that is never shown to the user.
+- `round0() -> Commitment`, `receive_commitment(c: Commitment)`, `round1() -> BlindedSet`, `round2(peer: BlindedSet) -> DoubleBlinded`, `result(peer_double: DoubleBlinded) -> Result`
+- State order: `NEW → COMMITTED (round0) → PEER_COMMITTED (receive_commitment) → REVEALED (round1) → DOUBLE_SENT (round2) → DONE (result)`. A call out of order raises `OUT_OF_ORDER`. Any error moves to `FAILED`.
+- `verify_peer(peer)` uses the stored peer commitment and the constructor's `lab_pubkey`; checks in order: commitment (`COMMITMENT_MISMATCH`), lab signature (`BAD_SIGNATURE`), `count <= MAX_SET` (`SET_TOO_LARGE`), `|X| == count` (`COUNT_MISMATCH`), points valid and distinct (`INVALID_POINT`). `result` also checks `|Y| ==` own count and that every point is valid.
+- `zero()` overwrites the scalar in place and clears intermediate state; called on completion and on any abort. Best-effort in Python, because the binding call makes a temporary `bytes` copy.
+- `transcript() -> dict` lists what was sent and received, as 8-character hex prefixes and counts only, for `/check/seen`.
+
+Wallet call sequence (P2): `s = Session(...)`; post `s.round0()` to round 0; when the peer's round 0 is released, `s.receive_commitment(...)`; post `s.round1()`; when the peer's round 1 arrives, post `s.round2(peer)`; when the peer's round 2 arrives, `s.result(peer_double)`. On `ProtocolError e`, show `{code: e.code, user_message: e.user_message}` and call `POST /sessions/{id}/fail`.
 
 ### core/claims.py
 - `claim_hash(claim) -> hex` = `SHA-256(b"genematch/v1/claim-hash/" || canon(claim))`, including `lab_sig`.
-- `make_presentation(claim, holder_seed, nonce, trial_id) -> Presentation`; the holder signs `b"genematch/v1/present/" || canon({claim_hash, nonce, trial_id})`.
-- `verify_presentation(p, lab_pubkey, request) -> None` checks the lab signature (prefix `genematch/v1/claim/`, over the claim without `lab_sig`), the holder signature against `claim.holder_pubkey`, that `p.nonce == request.nonce` and `p.trial_id == request.trial_id`, and that gene and finding match. Raises `ProtocolError`. Nonce reuse and expiry are checked by the trial service, which owns the nonce store.
+- `make_presentation(claim, holder_seed, nonce, trial_id) -> Presentation`; the holder signs `b"genematch/v1/present/" || canon({claim_hash, nonce, trial_id})`. Refuses if the seed's public key is not `claim.holder_pubkey`.
+- `verify_presentation(p, lab_pubkey, request) -> None` checks, in order, the lab signature (prefix `genematch/v1/claim/`, over the claim without `lab_sig`; `BAD_LAB_SIG`), the holder signature against `claim.holder_pubkey` (`BAD_HOLDER_SIG`), that `p.nonce == request.nonce` and `p.trial_id == request.trial_id` (`REQUEST_MISMATCH`), and that gene and finding match (`WRONG_FINDING`). Raises `ProtocolError`. Nonce reuse and expiry are checked by the trial service, which owns the nonce store.
+- `select_claim(claims, gene, finding) -> SignedClaim` returns exactly one matching claim or raises `NO_MATCHING_CLAIM`.
 
 ### lab/service.py (port 8200)
 - `POST /credentials {person_id, genes[], findings[], holder_pubkey} -> {credential, claims}`
@@ -173,7 +182,7 @@ All wire models live in `core/models.py` as Pydantic models. Bytes are lowercase
 
 | Model | Fields |
 |---|---|
-| `Credential` | `person_id, tokens: list[str], count: int, commitment, issued_at, lab_sig` |
+| `Credential` | `person_id, tokens: list[str], count: int, commitment, issued_at, lab_sig, commit_salt: str \| None = None` (salt is wallet-only, never sent) |
 | `SignedClaim` | `person_id, gene, finding, salt, holder_pubkey, issued_at, lab_sig` |
 | `Commitment` (round 0) | `h` |
 | `BlindedSet` (round 1) | `blinded: list[str], person_id, count, commitment, issued_at, lab_sig` |
@@ -231,7 +240,8 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 | Adversary | Can they... | Mitigation |
 |---|---|---|
 | Relay (honest-but-curious) | Learn genes or result? | Sees only blinded points; scalars never leave wallets; result computed locally. |
-| Relay (active) | Swap or replay messages? | Round-0 commitments; lab signatures on metadata. Full channel binding is out of scope for the MVP. |
+| Relay (active) | Swap, reflect, or replay messages? | Partially mitigated. Round-0 commitments bind session ID, mode, and role, so reflection, cross-session splicing or replay, and a mode split abort with `COMMITMENT_MISMATCH`; lab signatures cover metadata. Round 2 is unauthenticated: valid but wrong points force a false "no match" (needs DLEQ proofs). |
+| Partner (malicious) | Fake a match or a different result? | **Not prevented.** Whoever posts round 2 second has seen the other's points and can copy or replace them, so the two outputs may differ. Fairness and round-2 integrity need DLEQ proofs. |
 | Partner (malicious) | Probe all panel genes? | Needs lab tokens (requires `k_lab`); signed count caps set size. |
 | Partner | Invent a carrier gene? | Cannot create a valid token without `k_lab`. |
 | Partner | Adapt input after seeing mine? | Commit-then-reveal. |
@@ -240,21 +250,30 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 | Someone with a copied claim | Present it as their own? | Holder signature over a fresh nonce is required. |
 | AI agent / LLM provider | Learn genetic data? | In Count mode it receives only a number; in Detail mode it receives only what both partners already learned. |
 
-Residual risks, stated plainly in the README: tokens are deterministic per gene, so two people holding the same gene hold the same token (fine inside wallets, but tokens must never leave them); a compromised lab key breaks everything; the design is not post-quantum.
+Residual risks, stated plainly in the README:
+- Tokens are deterministic per gene, so two people holding the same gene hold the same token (fine inside wallets, but tokens must never leave them).
+- The signed commitment is checked only by its owner. The partner cannot verify that a blinded set comes from the committed tokens (S1), so omitting a gene or inserting a forged point goes undetected; a forged point simply never matches.
+- Partners learn each other's carrier count, and the relay learns `person_id` and the counts.
+- With the commitment-salt flag off, people with identical carrier sets have identical commitments, visible to the relay and partner.
+- The same lab signature is reused across sessions, so a person's checks are linkable to each other.
+- Scalar zeroing is best-effort in Python.
+- A compromised lab key breaks everything; the design is not post-quantum.
 
 ## Stretch designs
 
-- **S1: Prove no hiding.** Prove in zero knowledge that the blinded set is `{a · T}` for exactly the tokens committed in the signed credential. This needs elliptic-curve operations in-circuit, so the token curve should match the circuit's embedded curve (for example Grumpkin in Noir) rather than ristretto255. It is research-grade for a single day, so treat it as design-only unless ahead of schedule.
+- **S1: Prove no hiding.** Prove in zero knowledge that the blinded set is `{a · T}` for exactly the tokens committed in the signed credential. This needs elliptic-curve operations in-circuit, so the token curve should match the circuit's embedded curve (for example Grumpkin in Noir) rather than ristretto255. It is research-grade for a single day, so treat it as design-only unless ahead of schedule. The salted commitment carries over: the salt becomes a private witness, so the public commitment stays unlinkable.
+- **S1b: Round-2 integrity (DLEQ).** A cheaper, separate fix for the round-2 gap: alongside `Y = b · X`, the sender publishes `B = b · G` in round 0 (inside the commitment) and a Chaum-Pedersen proof that `log_G(B) = log_X(Y)` for every point (batchable with random linear combinations). This stops a partner or relay from forcing a false "no match" or copying points to fake a match, and is standard (it is how verifiable OPRFs, RFC 9497, work). It does not stop omission (S1). Fairness (one side aborting after learning the result) remains; it is inherent to two-party protocols without a third party.
 - **S2: Yes/no only.** Reveal only whether the count is greater than zero, via circuit-PSI. Design note only.
 - **S3: Post-quantum.** Genomic data stays sensitive for life, so harvest-now-decrypt-later is a real threat, and DH-PSI is not quantum-safe. Sketch a path through lattice-based OPRFs in the README.
 
 ## Error handling
-- All protocol failures raise `ProtocolError(code, user_message)`. Codes: `BAD_SIGNATURE`, `COMMITMENT_MISMATCH`, `COUNT_MISMATCH`, `SET_TOO_LARGE`, `INVALID_POINT`, `PEER_DECLINED`, `SESSION_EXPIRED`, `RELAY_UNAVAILABLE`, and for trials `BAD_LAB_SIG`, `BAD_HOLDER_SIG`, `NONCE_REUSED`, `NONCE_EXPIRED`, `WRONG_FINDING`, `NO_MATCHING_CLAIM`. The UI shows the user message, for example: "Your partner's results couldn't be verified as coming from the lab, so the check was stopped. Nothing about you was revealed."
+- All protocol failures raise `ProtocolError(code, reason=None)`; `user_message` comes from `core.models.USER_MESSAGES`, and `reason` is internal only (never shown, never sensitive). Codes: `BAD_SIGNATURE`, `COMMITMENT_MISMATCH`, `COUNT_MISMATCH`, `SET_TOO_LARGE`, `INVALID_POINT`, `PEER_DECLINED`, `SESSION_EXPIRED`, `RELAY_UNAVAILABLE`, `OUT_OF_ORDER`, `BAD_CREDENTIAL` (own wallet file failed verification; nothing was sent), and for trials `BAD_LAB_SIG`, `BAD_HOLDER_SIG`, `NONCE_REUSED`, `NONCE_EXPIRED`, `WRONG_FINDING`, `NO_MATCHING_CLAIM`, `REQUEST_MISMATCH` (nonce or trial ID differs from the request). The UI shows the user message, for example: "Your partner's results couldn't be verified as coming from the lab, so the check was stopped. Nothing about you was revealed."
 - On any abort, the wallet zeroes the scalar and marks the session failed at the relay.
 
 ## Testing strategy
 - Unit: hash-to-group determinism and domain separation, scalar multiplication commutativity (`a·(b·P) == b·(a·P)`), commitment mismatch detection, signature verification (valid, tampered, wrong key), identity and invalid point rejection.
 - Protocol: all three demo couples in both modes produce the expected intersections, and Count mode output contains no gene information.
-- Adversarial: inflated set beyond the signed count, an unsigned token, a commitment mismatch, and a replayed round-1 message all abort.
+- Adversarial: inflated set beyond the signed count, a commitment mismatch, a replayed round-1 message, reflection, cross-session splicing, and a mode split all abort. A forged (unsigned) token does not abort but never matches (S1 limitation).
+- Owner-side: a tampered wallet credential (signature, salt, token, or commitment) fails with `BAD_CREDENTIAL` before anything is sent.
 - Trial: valid presentation accepted; tampered claim, wrong holder key, reused nonce, expired nonce, and mismatched gene all rejected; wallet sends exactly one claim.
 - Agent: the template fallback satisfies Requirement 6, and a Count-mode prompt contains no gene names (assert on the prompt string).

@@ -1,5 +1,9 @@
 # Untracked for now
 CLAUDE.md
-
 # Demo keys and wallet files
 var/
+# Local environment and build artifacts
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/

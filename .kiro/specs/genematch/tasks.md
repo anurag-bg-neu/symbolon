@@ -6,7 +6,7 @@ Re-planned at 11:52 with no code written yet (the original plan assumed a 9:00 s
 
 | Tag | Role | Owns (folders) |
 |---|---|---|
-| **P1** | Crypto and protocol | `core/`, `tests/test_crypto*.py`, `tests/test_protocol*.py`, claim signing and verification logic |
+| **P1** | Crypto and protocol | `core/` (including `core/issuance.py`), `tests/test_crypto*.py`, `tests/test_protocol*.py`, claim signing and verification logic |
 | **P2** | Backend services | `relay/`, `lab/`, `wallet/service.py`, `trial/service.py`, `scripts/` |
 | **P3** | Frontend, agent, story | `data/`, `agent/`, `wallet/static/`, `trial/static/`, `README.md`, demo video |
 
@@ -43,30 +43,30 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
 
 ## Tasks
 
-- [ ] 1. Project skeleton and crypto core — **P1**, 12:00–13:15
-  - [ ] 1.1 Create the repository layout from `structure.md`, `pyproject.toml` with fastapi, uvicorn, rbcl, pynacl>=1.6, pydantic, httpx, boto3, and pytest, and `core/models.py` with every model in the design.md "Data models" table
+- [x] 1. Project skeleton and crypto core — **P1**, 12:00–13:15
+  - [x] 1.1 Create the repository layout from `structure.md`, `pyproject.toml` with fastapi, uvicorn, rbcl, pynacl>=1.6, pydantic, httpx, boto3, and pytest, and `core/models.py` with every model in the design.md "Data models" table
     - _Requirements: none (setup)_
-  - [ ] 1.2 Verify that `rbcl` installs and exposes the ristretto255 bindings (`from_hash`, `scalarmult`, `scalar_random`, `is_valid_point`); if not, switch to `pysodium`, then to `openmined-psi` as a last resort
+  - [x] 1.2 Verify that `rbcl` installs and exposes the ristretto255 bindings (`from_hash`, `scalarmult`, `scalar_random`, `is_valid_point`); if not, switch to `pysodium`, then to `openmined-psi` as a last resort
     - _Requirements: none (setup)_
-  - [ ] 1.3 Implement `core/crypto.py`: `hash_to_group`, `random_scalar`, `mul`, `blind_set`, `commit_tokens`, `commit_blinded`, `canon`, `sign`, `verify`, with the prefixes in design.md
+  - [x] 1.3 Implement `core/crypto.py`: `hash_to_group`, `random_scalar`, `mul`, `blind_set`, `commit_tokens`, `commit_blinded`, `canon`, `sign`, `verify`, with the prefixes in design.md
     - _Requirements: 1.1, 1.2, 4.1, 5.1, 5.4_
-  - [ ] 1.4 Write unit tests for commutativity, domain separation, invalid and identity point rejection, commitment determinism, and signatures (valid, tampered, wrong key)
+  - [x] 1.4 Write unit tests for commutativity, domain separation, invalid and identity point rejection, commitment determinism, and signatures (valid, tampered, wrong key)
     - _Requirements: 1.1, 1.2, 4.3, 5.4_
 
 - [ ] 2. Gene panel and lab service
   - [ ] 2.1 **P3**, 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
     - _Requirements: 1.3, 6.1_
-  - [ ] 2.2 **P2**, 13:15–13:45: implement `lab/keys.py` (`load_or_create`), `core/issuance.py` (`issue`, with panel, AR, `MAX_SET`, and `CLAIM_GENES` checks), and `lab/service.py` (`POST /credentials`, `GET /pubkey`)
+  - [ ] 2.2 **P1**: `core/issuance.py` (`issue`, with panel, AR, duplicate, `MAX_SET`, and `CLAIM_GENES` checks, and the `salt_commitment` flag). **P2**, 13:15–13:45: `lab/keys.py` (`load_or_create`) and `lab/service.py` (`POST /credentials`, `GET /pubkey`), reading `GENEMATCH_COMMIT_SALT` and passing it to `issue`
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
   - [ ] 2.3 **P2**, 13:45–14:00: write `scripts/seed_demo.py` (in-process, no HTTP) to issue credentials for the three demo couples in design.md and write `var/wallets/<person_id>.json`
     - _Requirements: 7.2_
 
-- [ ] 3. Protocol engine, terminal-only — **P1**, 13:15–14:45 — **milestone A at 14:00: PSI works end to end in pytest**
-  - [ ] 3.1 Implement `core/protocol.py`: `Session`, rounds 0–2, `verify_peer`, `result` for both modes, and `zero()`
+- [x] 3. Protocol engine, terminal-only — **P1**, 13:15–14:45 — **milestone A at 14:00: PSI works end to end in pytest**
+  - [x] 3.1 Implement `core/protocol.py`: `Session`, rounds 0–2, `verify_peer`, `result` for both modes, and `zero()`
     - _Requirements: 3.4, 4.1, 4.3, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
-  - [ ] 3.2 Write protocol tests for all three couples in both modes (fixture lab key in `tests/conftest.py`, using `core.issuance.issue`)
+  - [x] 3.2 Write protocol tests for all three couples in both modes (fixture lab key in `tests/conftest.py`, using `core.issuance.issue`)
     - _Requirements: 3.4, 5.5, 5.6, 7.2_
-  - [ ] 3.3 Write adversarial tests: inflated set, forged token, commitment mismatch, bad signature, replayed round-1 message
+  - [x] 3.3 Write adversarial tests: inflated set, commitment mismatch, bad signature, replayed round-1 message, reflection, cross-session splice, and mode split all abort; a forged token never matches (no abort, S1 limitation); a tampered own credential fails with `BAD_CREDENTIAL`
     - _Requirements: 4.3, 5.3, 5.4_
 
 - [ ] 4. Relay service — **P2**, 12:20–13:15
@@ -78,7 +78,7 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: 7.1_
 
 - [ ] 5. Wallet service and UI — 14:00–16:30 — **milestone B at 16:30: two-browser demo**
-  - [ ] 5.1 **P2** (P1 pairs from 14:45): wallet endpoints from the design.md table (`/me`, `/check/*`), the 500 ms relay polling loop, the in-process counselor call, and scalar zeroing on completion or abort
+  - [ ] 5.1 **P2** (P1 pairs from 14:45): wallet endpoints from the design.md table (`/me`, `/check/*`), the 500 ms relay polling loop, the in-process counselor call, and scalar zeroing on completion or abort. Construct `Session(role, mode, session_id, credential, genes, lab_pubkey)` and follow the wallet call sequence in design.md (`core/protocol.py` section)
     - _Requirements: 2.4, 3.2, 5.6, 5.7_
   - [ ] 5.2 **P3**: UI screens: home (credential summary from `/me`), start check (mode choice and invite code), join (mode explanation, then accept or decline), waiting, result with explanation
     - _Requirements: 2.4, 3.1, 3.2, 3.3_
@@ -98,7 +98,7 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
 - [ ] 7. Trial eligibility — 16:30–18:00, **only if milestone B is green at 16:30**
   - [ ] 7.1 **P2**: seed script generates one holder key per person, passes the public key to `issue`, and writes the seed only to that wallet's file
     - _Requirements: 8.1_
-  - [ ] 7.2 **P1**: per-finding signed claims in `core/issuance.py` (salt, holder public key, `genematch/v1/claim/` signature) and `core/claims.py` (`claim_hash`, `make_presentation`, `verify_presentation`)
+  - [x] 7.2 **P1**: per-finding signed claims in `core/issuance.py` (salt, holder public key, `genematch/v1/claim/` signature) and `core/claims.py` (`claim_hash`, `make_presentation`, `verify_presentation`)
     - _Requirements: 8.1, 8.3, 8.5_
   - [ ] 7.3 **P3**: write `data/trials.json` with two demo trials (one BRCA1, one BRCA2), in the design.md shape
     - _Requirements: 8.2_
@@ -116,7 +116,7 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: none (stretch)_
   - [ ] 8.2 **P1**, optional: design notes for S1, S2, and S3 in the README
     - _Requirements: none (stretch)_
-  - [ ] 8.3 **P1**: check timing: a full check takes under 3 seconds of compute
+  - [x] 8.3 **P1**: check timing: a full check takes under 3 seconds of compute
     - _Requirements: 7.3_
 
 - [ ] 9. Submission — 18:00–19:30

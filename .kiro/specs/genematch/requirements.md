@@ -24,7 +24,7 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 
 #### Acceptance Criteria
 1. WHEN the lab issues a credential THE SYSTEM SHALL compute one lab token `T_g = k_lab · H(g)` for each carrier gene `g` of that person.
-2. THE SYSTEM SHALL include in each credential the person ID, token list, token count, a commitment `SHA-256("genematch/v1/commit/" || sorted tokens)`, issue time, and an Ed25519 signature by the lab over the canonical encoding of all of these.
+2. THE SYSTEM SHALL include in each credential the person ID, token list, token count, a commitment `SHA-256("genematch/v1/commit/" || salt || sorted tokens)` (salt is 16 random bytes when the commitment-salt flag is on, empty when off), issue time, and an Ed25519 signature by the lab over the canonical encoding of the person ID, count, commitment, and issue time; the signature covers the tokens through the commitment.
 3. IF a requested gene is not in the panel or is not autosomal recessive THEN THE SYSTEM SHALL refuse to issue the credential.
 4. THE SYSTEM SHALL keep `k_lab` and the lab signing key inside the lab service and SHALL publish only the lab's Ed25519 verification key.
 5. THE SYSTEM SHALL cap the token count per credential at `MAX_SET` (default 20).

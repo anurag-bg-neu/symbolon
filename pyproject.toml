@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genematch"
+version = "0.1.0"
+description = "Private carrier-compatibility checks over lab-signed credentials (demo, synthetic data)"
+requires-python = ">=3.11"
+# Pinned to the versions verified on Python 3.14.3 / Windows (Oct 24 2026).
+dependencies = [
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+    "rbcl==1.1.2",
+    "pynacl==1.6.2",
+    "pydantic==2.14.1",
+    "httpx==0.28.1",
+    "boto3==1.43.118",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+
+[tool.setuptools.packages.find]
+include = ["core*", "lab*", "relay*", "wallet*", "trial*", "agent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
