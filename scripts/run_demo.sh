@@ -17,10 +17,12 @@ case "${COUPLE:-1}" in
   *) echo "COUPLE must be 1, 2 or 3" >&2; exit 1 ;;
 esac
 # EMPTY="alex jordan" starts those wallets with no results (re-seeds every wallet).
-EMPTY_ARGS=()
-for p in ${EMPTY:-}; do EMPTY_ARGS+=(--empty "$p"); done
-if [ ${#EMPTY_ARGS[@]} -gt 0 ] || [ ! -f var/wallets/alex.json ] || [ ! -f var/accounts.json ] || [ ! -f var/lab_accounts.json ]; then
-  "$PY" scripts/seed_demo.py "${EMPTY_ARGS[@]}"
+# Use positional parameters rather than an array: macOS ships Bash 3.2, where
+# expanding an empty array under `set -u` raises "unbound variable".
+set --
+for p in ${EMPTY:-}; do set -- "$@" --empty "$p"; done
+if [ "$#" -gt 0 ] || [ ! -f var/wallets/alex.json ] || [ ! -f var/accounts.json ] || [ ! -f var/lab_accounts.json ]; then
+  "$PY" scripts/seed_demo.py "$@"
 fi
 
 trap 'kill $(jobs -p) 2>/dev/null' EXIT

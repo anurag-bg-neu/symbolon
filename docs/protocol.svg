@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1280" viewBox="0 0 1600 1280" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#059669"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#7c3aed"/>
+    </marker>
+    <style>
+      .title { font-size: 30px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-size: 15px; fill: #475569; }
+      .box-title { font-size: 16px; font-weight: 700; }
+      .box-sub { font-size: 12px; fill: #475569; }
+      .lbl { font-size: 12.5px; fill: #1e293b; }
+      .lblb { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .mono { font-family: 'SF Mono', Consolas, monospace; font-size: 12px; fill: #0f172a; }
+      .phase { font-size: 18px; font-weight: 700; fill: #0f172a; }
+      .note { font-size: 12px; fill: #64748b; }
+      .tag { font-size: 11px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1280" fill="#f8fafc"/>
+
+  <!-- Header -->
+  <text x="40" y="48" class="title">Symbolon — the whole protocol</text>
+  <text x="40" y="72" class="subtitle">Lab-signed credential · two-party DH-PSI over ristretto255 through an untrusted relay · selective-disclosure trial claims. All data synthetic.</text>
+
+  <!-- Owner legend -->
+  <g transform="translate(1120,28)">
+    <rect x="0" y="0" width="440" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="14" y="14" width="22" height="22" rx="4" fill="#fee2e2" stroke="#dc2626"/>
+    <text x="44" y="30" class="tag" fill="#991b1b">P1 crypto / protocol</text>
+    <rect x="190" y="14" width="22" height="22" rx="4" fill="#dbeafe" stroke="#2563eb"/>
+    <text x="220" y="30" class="tag" fill="#1e40af">P2 backend</text>
+    <rect x="320" y="14" width="22" height="22" rx="4" fill="#ede9fe" stroke="#7c3aed"/>
+    <text x="350" y="30" class="tag" fill="#5b21b6">P3 front / agent</text>
+  </g>
+
+  <!-- ===================== PHASE 1: ISSUANCE ===================== -->
+  <text x="40" y="118" class="phase">1 · Issuance  (the lab is the only root of trust)</text>
+
+  <!-- Lab box -->
+  <g transform="translate(40,135)">
+    <rect width="300" height="150" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="18" y="30" class="box-title" fill="#1e40af">Lab service  :8200</text>
+    <text x="18" y="52" class="box-sub">holds k_lab + Ed25519 key (var/lab_keys.json)</text>
+    <line x1="18" y1="62" x2="282" y2="62" stroke="#93c5fd"/>
+    <text x="18" y="84" class="mono">T_g = k_lab · H(g)   H(g)=from_hash(</text>
+    <text x="18" y="102" class="mono">   SHA-512("genematch/v1/gene/"+g))</text>
+    <text x="18" y="124" class="lbl">C_P = SHA-256(commit-prefix ‖ sorted T)</text>
+    <text x="18" y="142" class="lbl">Ed25519-signs {person,count,C_P,issued}</text>
+  </g>
+
+  <!-- issuance arrows -->
+  <path d="M340,185 H470" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#arrowBlue)"/>
+  <text x="352" y="178" class="lblb" fill="#1e40af">Credential A</text>
+  <path d="M340,235 H470" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#arrowBlue)"/>
+  <text x="352" y="228" class="lblb" fill="#1e40af">Credential B</text>
+
+  <!-- Alex wallet -->
+  <g transform="translate(470,135)">
+    <rect width="300" height="150" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="18" y="30" class="box-title" fill="#5b21b6">Alex wallet  :8101</text>
+    <text x="18" y="52" class="box-sub">credential A · claims · holder key</text>
+    <line x1="18" y1="62" x2="282" y2="62" stroke="#c4b5fd"/>
+    <text x="18" y="84" class="mono">tokens_A = {T_g : g ∈ genes_A}</text>
+    <text x="18" y="108" class="lbl">session scalar <tspan class="mono" font-weight="700">a</tspan>  (memory only,</text>
+    <text x="18" y="126" class="lbl">never sent / logged, zeroed on end)</text>
+    <text x="18" y="144" class="note">genes shown only on owner's home screen</text>
+  </g>
+
+  <!-- Sam wallet -->
+  <g transform="translate(900,135)">
+    <rect width="300" height="150" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="18" y="30" class="box-title" fill="#5b21b6">Sam wallet  :8102</text>
+    <text x="18" y="52" class="box-sub">credential B · claims · holder key</text>
+    <line x1="18" y1="62" x2="282" y2="62" stroke="#c4b5fd"/>
+    <text x="18" y="84" class="mono">tokens_B = {T_g : g ∈ genes_B}</text>
+    <text x="18" y="108" class="lbl">session scalar <tspan class="mono" font-weight="700">b</tspan>  (memory only,</text>
+    <text x="18" y="126" class="lbl">never sent / logged, zeroed on end)</text>
+    <text x="18" y="144" class="note">PSI runs on tokens, never raw H(g)</text>
+  </g>
+
+  <!-- why lab tokens note -->
+  <g transform="translate(1240,135)">
+    <rect width="320" height="150" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="16" y="28" class="box-title" fill="#b45309">Why lab tokens?</text>
+    <text x="16" y="52" class="lbl">Panel &lt; 100 genes. Plain DH-PSI on H(g)</text>
+    <text x="16" y="70" class="lbl">would let a partner enter every gene and</text>
+    <text x="16" y="88" class="lbl">learn the full carrier list.</text>
+    <text x="16" y="112" class="lbl">Computing T_g needs k_lab, and the signed</text>
+    <text x="16" y="130" class="lbl">count caps set size → authorized PSI.</text>
+  </g>
+
+  <!-- ===================== PHASE 2: COUPLE PSI ===================== -->
+  <text x="40" y="345" class="phase">2 · Couple compatibility  —  commit-then-reveal DH-PSI through the untrusted relay</text>
+
+  <!-- Lane headers -->
+  <g>
+    <rect x="40" y="360" width="340" height="40" rx="8" fill="#ede9fe" stroke="#7c3aed"/>
+    <text x="210" y="385" text-anchor="middle" class="box-title" fill="#5b21b6">Alex wallet (initiator)</text>
+
+    <rect x="630" y="360" width="340" height="40" rx="8" fill="#dbeafe" stroke="#2563eb"/>
+    <text x="800" y="385" text-anchor="middle" class="box-title" fill="#1e40af">Relay :8000  — untrusted, sees only blinded points</text>
+
+    <rect x="1220" y="360" width="340" height="40" rx="8" fill="#ede9fe" stroke="#7c3aed"/>
+    <text x="1390" y="385" text-anchor="middle" class="box-title" fill="#5b21b6">Sam wallet (joiner)</text>
+  </g>
+
+  <!-- lifelines -->
+  <line x1="210" y1="400" x2="210" y2="920" stroke="#7c3aed" stroke-width="2" stroke-dasharray="4 4"/>
+  <line x1="800" y1="400" x2="800" y2="920" stroke="#2563eb" stroke-width="2" stroke-dasharray="4 4"/>
+  <line x1="1390" y1="400" x2="1390" y2="920" stroke="#7c3aed" stroke-width="2" stroke-dasharray="4 4"/>
+
+  <!-- Setup -->
+  <text x="40" y="428" class="lblb" fill="#334155">Setup</text>
+  <path d="M210,440 H800" stroke="#334155" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+  <text x="300" y="434" class="lbl">create session (mode)</text>
+  <path d="M800,470 H210" stroke="#334155" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+  <text x="300" y="464" class="lbl">session_id + invite code</text>
+  <path d="M1390,500 H800" stroke="#334155" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+  <text x="1020" y="494" class="lbl">join(code) → mode → accept</text>
+
+  <!-- Round 0 commit -->
+  <rect x="40" y="520" width="1520" height="86" rx="8" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="56" y="542" class="lblb" fill="#991b1b">Round 0 — commit  (lock in before anything is revealed)</text>
+  <path d="M210,566 H800" stroke="#dc2626" stroke-width="1.8" fill="none" marker-end="url(#arrow)"/>
+  <text x="300" y="560" class="mono">h_A = SHA-256(blinded-prefix ‖ canon(X_A))</text>
+  <path d="M1390,566 H800" stroke="#dc2626" stroke-width="1.8" fill="none" marker-end="url(#arrow)"/>
+  <text x="1040" y="560" class="mono">h_B = SHA-256(... canon(X_B))</text>
+  <text x="56" y="592" class="note">X_A = shuffle({a·T : T ∈ tokens_A}),  X_B = shuffle({b·T : T ∈ tokens_B}).  Relay holds both commitments before releasing either.</text>
+
+  <!-- Round 1 reveal -->
+  <rect x="40" y="618" width="1520" height="100" rx="8" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="56" y="640" class="lblb" fill="#b45309">Round 1 — reveal blinded set + signed metadata</text>
+  <path d="M210,664 H800" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#arrow)"/>
+  <text x="250" y="658" class="mono">X_A + {person,count,commitment,issued,lab_sig}</text>
+  <path d="M800,664 H1390" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#arrow)"/>
+  <path d="M1390,692 H800" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#arrow)"/>
+  <text x="1010" y="686" class="mono">X_B + signed metadata</text>
+  <path d="M800,692 H210" stroke="#334155" stroke-width="1.8" fill="none" marker-end="url(#arrow)"/>
+  <text x="56" y="711" class="note">Each receiver checks: hash == round-0 commitment · lab Ed25519 signature · |X| == count ≤ MAX_SET(20) · every point valid, no identity.  Any failure → ProtocolError, scalar zeroed, nothing revealed.</text>
+
+  <!-- Round 2 double-blind -->
+  <rect x="40" y="730" width="1520" height="96" rx="8" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="56" y="752" class="lblb" fill="#166534">Round 2 — double-blind</text>
+  <path d="M210,776 H800" stroke="#059669" stroke-width="1.8" fill="none" marker-end="url(#arrowGreen)"/>
+  <text x="260" y="770" class="mono">Y_B = {a·x : x ∈ X_B} = {ab·T : T ∈ tokens_B}</text>
+  <path d="M800,776 H1390" stroke="#059669" stroke-width="1.8" fill="none" marker-end="url(#arrowGreen)"/>
+  <path d="M1390,804 H800" stroke="#059669" stroke-width="1.8" fill="none" marker-end="url(#arrowGreen)"/>
+  <text x="1010" y="798" class="mono">Y_A = {b·x : x ∈ X_A}</text>
+  <path d="M800,804 H210" stroke="#059669" stroke-width="1.8" fill="none" marker-end="url(#arrowGreen)"/>
+  <text x="56" y="819" class="note">Detail mode keeps X-order so matches map back to genes; Count mode shuffles so only the size leaks.  ab·T is identical regardless of which scalar went first → commutativity.</text>
+
+  <!-- Result -->
+  <rect x="40" y="838" width="1520" height="72" rx="8" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="56" y="860" class="lblb" fill="#3730a3">Result — computed locally on each phone, nothing else revealed</text>
+  <text x="56" y="882" class="mono">Alex: Y_A ∩ Z_B    Sam: Y_B ∩ Z_A    (Z = the values each sent in round 2)   →   same symmetric output</text>
+  <text x="56" y="901" class="note">Count mode → shared_count only.   Detail mode → shared_genes.   Session scalar zeroed on completion or abort.</text>
+
+  <!-- ===================== PHASE 3: COUNSELOR ===================== -->
+  <text x="40" y="958" class="phase">3 · Counselor agent  (result in, plain language out)</text>
+
+  <path d="M300,975 H360" stroke="#7c3aed" stroke-width="1.8" fill="none" marker-end="url(#arrowPurple)"/>
+  <g transform="translate(360,965)">
+    <rect width="470" height="120" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="16" y="28" class="box-title" fill="#5b21b6">Counselor  agent/counselor.py</text>
+    <text x="16" y="50" class="lbl">Count mode input: { shared_count }  — no gene / condition names</text>
+    <text x="16" y="70" class="lbl">Detail mode input: { shared: [panel entries] } only</text>
+    <text x="16" y="90" class="lbl">Deterministic plain-language template (LLM integration deferred)</text>
+    <text x="16" y="108" class="note">States 25% per-pregnancy risk when shared · refers to a genetic counselor · never diagnoses</text>
+  </g>
+
+  <g transform="translate(850,965)">
+    <rect width="360" height="120" rx="10" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+    <text x="16" y="28" class="box-title" fill="#0f172a">"What did everyone see?"</text>
+    <text x="16" y="50" class="lbl">Relay: only 8-hex point prefixes</text>
+    <text x="16" y="70" class="lbl">Partner: your blinded set (opaque points)</text>
+    <text x="16" y="90" class="lbl">Agent: a number, or the agreed genes only</text>
+    <text x="16" y="108" class="note">from /check/seen — radical transparency panel</text>
+  </g>
+
+  <!-- ===================== PHASE 4: TRIAL ===================== -->
+  <text x="40" y="1138" class="phase">4 · Trial eligibility  —  selective disclosure of one signed claim, with holder binding</text>
+
+  <g transform="translate(40,1150)">
+    <rect width="300" height="90" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="16" y="26" class="box-title" fill="#5b21b6">Wallet</text>
+    <text x="16" y="48" class="lbl">picks ONE lab-signed claim</text>
+    <text x="16" y="66" class="mono">{gene, finding, salt, holder_pk}</text>
+    <text x="16" y="84" class="note">germline BRCA1/BRCA2 only</text>
+  </g>
+
+  <path d="M340,1175 H470" stroke="#7c3aed" stroke-width="1.8" fill="none" marker-end="url(#arrowPurple)"/>
+  <text x="352" y="1168" class="lbl">presentation</text>
+  <path d="M470,1210 H340" stroke="#2563eb" stroke-width="1.8" fill="none" marker-end="url(#arrowBlue)"/>
+  <text x="352" y="1228" class="lbl">nonce (challenge)</text>
+
+  <g transform="translate(470,1150)">
+    <rect width="360" height="90" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="16" y="26" class="box-title" fill="#1e40af">Trial verifier  :8300</text>
+    <text x="16" y="48" class="lbl">issues single-use nonce (5-min expiry)</text>
+    <text x="16" y="66" class="lbl">checks lab sig + holder sig over nonce</text>
+    <text x="16" y="84" class="note">sees exactly one claim, nothing else</text>
+  </g>
+
+  <g transform="translate(850,1150)">
+    <rect width="710" height="90" rx="10" fill="#f0fdf4" stroke="#059669" stroke-width="1.5"/>
+    <text x="16" y="26" class="box-title" fill="#166534">Holder binding + selective disclosure</text>
+    <text x="16" y="48" class="mono">holder_sig over SHA-256(present-prefix ‖ {claim_hash, nonce, trial_id})</text>
+    <text x="16" y="68" class="lbl">A copied claim is useless without the holder private key.  Lab signs each finding separately, so one claim stands alone.</text>
+    <text x="16" y="86" class="note">Known limit: the same claim shown to two verifiers is linkable (needs BBS+ / ZK — future work).</text>
+  </g>
+
+  <!-- footer -->
+  <text x="40" y="1258" class="note">Demo with synthetic data. Not medical advice.   ·   Not prevented in MVP: a partner omitting a real carrier gene (stretch S1).   ·   Not post-quantum.</text>
+</svg>
