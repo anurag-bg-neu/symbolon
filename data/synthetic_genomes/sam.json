@@ -1,0 +1,14 @@
+{
+  "format": "genematch.synthetic-wgs-sample.v1",
+  "sample_id": "sam",
+  "assembly_id": "synthetic-grch38-lengths-v1",
+  "synthetic": true,
+  "seed": "9fff518e5c3115b0c19e88f8c3665dda434aa737b6fa6a6102c48393bc68eade",
+  "haplotypes": 2,
+  "total_bases": 6176572802,
+  "simulated_lab_interpretations": {
+    "carrier_genes": ["CFTR", "HEXA"],
+    "trial_findings": []
+  },
+  "notice": "Synthetic demo fixture only. Interpretations are deliberate labels for the GeneMatch scenario, are not inferred from the generated bases, and do not describe a real person or clinical variant."
+}

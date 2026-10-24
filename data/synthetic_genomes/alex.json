@@ -1,0 +1,16 @@
+{
+  "format": "genematch.synthetic-wgs-sample.v1",
+  "sample_id": "alex",
+  "assembly_id": "synthetic-grch38-lengths-v1",
+  "synthetic": true,
+  "seed": "f99cc3ce9c2045f48c45409e9e4a8434bf60052dd8c6ea0d22e9679914dfe50f",
+  "haplotypes": 2,
+  "total_bases": 6176572802,
+  "simulated_lab_interpretations": {
+    "carrier_genes": ["CFTR", "GBA", "PAH"],
+    "trial_findings": [
+      {"gene": "BRCA1", "finding": "germline pathogenic variant"}
+    ]
+  },
+  "notice": "Synthetic demo fixture only. Interpretations are deliberate labels for the GeneMatch scenario, are not inferred from the generated bases, and do not describe a real person or clinical variant."
+}

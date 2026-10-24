@@ -1,0 +1,19 @@
+{
+  "person_id": "sam",
+  "genes": ["CFTR", "HEXA"],
+  "credential": {
+    "person_id": "sam",
+    "tokens": [
+      "<redacted 32-byte Ristretto point for CFTR>",
+      "<redacted 32-byte Ristretto point for HEXA>"
+    ],
+    "count": 2,
+    "commitment": "<redacted SHA-256 commitment>",
+    "issued_at": "<UTC timestamp>",
+    "lab_sig": "<redacted Ed25519 signature>",
+    "commit_salt": "<redacted 16-byte salt>"
+  },
+  "claims": [],
+  "holder_seed": "<private; generated only in var/wallets/sam.json>",
+  "lab_pubkey": "<redacted Ed25519 public key>"
+}

@@ -13,7 +13,7 @@ URL = re.compile(r"^https://medlineplus\.gov/genetics/condition/[a-z0-9-]+/$")
 
 def test_panel_entries_are_valid_ar_with_condition_links():
     panel = json.loads((ROOT / "data" / "panel.json").read_text("utf-8"))
-    assert 8 <= len(panel) <= 60
+    assert 30 <= len(panel) <= 60
     genes = [PanelEntry.model_validate(e).gene for e in panel]
     assert len(genes) == len(set(genes))
     assert all(e["inheritance"] == "AR" for e in panel)
