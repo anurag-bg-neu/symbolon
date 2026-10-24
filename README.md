@@ -1,10 +1,12 @@
-# GeneMatch
+# Symbolon
 
 **Know your genetic risks. Keep your genetic secrets.**
 
-GeneMatch gives you a lab-signed genetic credential that never leaves your device. Using privacy-preserving cryptography, you answer exactly one question at a time, such as *"Are we at risk together?"* or *"Am I eligible for this trial?"* — and nobody ever sees your genome: not your partner, not the server, not the AI.
+Symbolon gives you a lab-signed genetic credential that never leaves your device. Using privacy-preserving cryptography, you answer exactly one question at a time, such as *"Are we at risk together?"* or *"Am I eligible for this trial?"* — and nobody ever sees your genome: not your partner, not the server, not the AI.
 
 > We don't decide who you love. We make sure you're never surprised.
+
+**Track:** Healthcare & Biotech · Hackachusetts 2026 · Built with Kiro ([how we used Kiro](KIRO.md))
 
 *Demo with synthetic data. Not medical advice.*
 
@@ -41,7 +43,7 @@ One credential, two use cases.
 
 Most serious inherited childhood diseases — cystic fibrosis, sickle cell disease, Tay-Sachs, spinal muscular atrophy — are **autosomal recessive**: a child is affected only if *both* parents pass on a broken copy of the same gene. Carriers are healthy and usually don't know. If both partners carry the same gene, each pregnancy has a 25% chance of an affected child.
 
-GeneMatch compares two partners' carrier genes with **private set intersection (PSI)**. Each partner learns only the agreed result — either *how many* conditions they share, or *which* ones — and nothing else. An AI counselor then explains the result in plain language and suggests questions to bring to a genetic counselor.
+Symbolon compares two partners' carrier genes with **private set intersection (PSI)**. Each partner learns only the agreed result — either *how many* conditions they share, or *which* ones — and nothing else. An AI counselor then explains the result in plain language and suggests questions to bring to a genetic counselor.
 
 ### 2 · Clinical trial eligibility
 
@@ -66,7 +68,7 @@ The same credential proves *"I carry the variant this trial requires."* The lab 
 
 ## Why it's trustworthy
 
-| Concern | How GeneMatch handles it |
+| Concern | How Symbolon handles it |
 |---|---|
 | Faking results | Only the lab can create tokens and signed claims. |
 | A partner probing your whole carrier status | Lab-issued tokens plus a signed count cap stop someone from entering every gene in the panel. |
@@ -108,7 +110,7 @@ Then start all five services:
 **Demo sign-ins** (synthetic, shown on the sign-in page):
 
 - Wallet: `<person>@genematch.demo` / `demo-<person>` — e.g. `alex@genematch.demo` / `demo-alex`
-- Lab: `<person>@lab.genematch.demo` / `lab-<person>`, plus staff `staff@lab.genematch.demo` / `lab-staff`
+- Lab: `<person>@demolab.test` / `lab-<person>`, plus staff `staff@demolab.test` / `lab-staff`
 
 Choose a different couple with `COUPLE=2 ./scripts/run_demo.sh` (1: Alex & Sam, 2: Jordan & Riley, 3: Casey & Morgan).
 
@@ -162,7 +164,7 @@ Ports: relay 8000, Alex 8101, Sam 8102, lab 8200, trial 8300. Demo keys and wall
 - **Amazon Bedrock** — AI counselor, with a deterministic template fallback (template only in this build)
 - **Plain HTML / CSS / JS** — no frontend framework, no build step
 - **Data** — autosomal-recessive gene panel plus synthetic people and genomes
-- **Kiro** — specs and steering in [`.kiro/`](.kiro/)
+- **Kiro** — spec, steering, and agent hook in [`.kiro/`](.kiro/); write-up in [`KIRO.md`](KIRO.md)
 
 ## Testing
 
@@ -182,7 +184,7 @@ Stated honestly:
 - Round 2 is unauthenticated, so a malicious relay or partner can force a false "no match"; the UI never presents a result as guaranteed. A DLEQ-proof fix is designed (stretch S1b).
 - The same trial claim shown to two verifiers is **linkable**.
 - The protocol is **not post-quantum**. Genomic data stays sensitive for life, so this matters long-term.
-- **All data is synthetic.** GeneMatch is an education and screening-conversation tool, not a diagnosis.
+- **All data is synthetic.** Symbolon is an education and screening-conversation tool, not a diagnosis.
 
 ## Where this can go
 
