@@ -1,8 +1,12 @@
-# Start the GeneMatch demo on Windows: relay :8000, wallets :8101 (partner A) and
+# Start the Symbolon demo on Windows: relay :8000, wallets :8101 (partner A) and
 # :8102 (partner B), lab :8200, trial verifier :8300.
-# Usage (from the repo root):  .\scripts\run_demo.ps1 [-Couple 1|2|3]   (default 1)
+# Usage (from the repo root):  .\scripts\run_demo.ps1 [-Couple 1|2|3] [-Empty alex,jordan]
+#   -Empty starts those wallets with no results (re-seeds every wallet).
 # macOS/Linux: use scripts/run_demo.sh. Press Enter (or Ctrl-C) to stop everything.
-param([ValidateSet(1, 2, 3)][int]$Couple = $(if ($env:COUPLE) { [int]$env:COUPLE } else { 1 }))
+param(
+    [ValidateSet(1, 2, 3)][int]$Couple = $(if ($env:COUPLE) { [int]$env:COUPLE } else { 1 }),
+    [string[]]$Empty = @()
+)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -16,7 +20,11 @@ if (-not (Test-Path $py)) { $py = "python" }
 $pair = @{ 1 = @("alex", "sam"); 2 = @("jordan", "riley"); 3 = @("casey", "morgan") }[$Couple]
 $a, $b = $pair[0], $pair[1]
 
-if (-not (Test-Path "var\wallets\alex.json")) { & $py scripts\seed_demo.py }
+$seedArgs = @("scripts\seed_demo.py")
+foreach ($p in $Empty) { $seedArgs += @("--empty", $p) }
+if ($Empty.Count -gt 0 -or -not (Test-Path "var\wallets\alex.json") -or -not (Test-Path "var\accounts.json") -or -not (Test-Path "var\lab_accounts.json")) {
+    & $py @seedArgs
+}
 
 function Start-Service([string]$label, [string[]]$pyArgs, [string]$person = "") {
     $env:GENEMATCH_PERSON = $person

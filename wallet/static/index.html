@@ -3,23 +3,125 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GeneMatch wallet</title>
+  <title>Symbolon: know your genetic risks, keep your genetic secrets</title>
   <link rel="stylesheet" href="styles.css">
+  <!-- Trial links arrive as /#present=<id>; forward them to the signed-in app. -->
+  <script src="landing.js"></script>
 </head>
-<body>
+<body class="landing">
   <div class="banner" role="note">Demo with synthetic data. Not medical advice.</div>
   <header class="top">
-    <span class="brand">GeneMatch</span>
-    <span class="who" id="who" aria-label="Wallet owner"></span>
+    <span class="brand">Symbolon</span>
+    <nav aria-label="Main"><a class="btn small primary" href="/signin">Sign in</a></nav>
   </header>
-  <main id="app" tabindex="-1" aria-labelledby="screen-title">
-    <noscript><p>This wallet needs JavaScript to run the check.</p></noscript>
-  </main>
-  <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Optional counselor UI. Delete this line (and the agent/ package) to remove
-       the feature; the check, result, and transparency panel keep working. -->
-  <script src="counselor.js"></script>
-  <script src="app.js"></script>
+  <main id="main">
+    <section class="hero reveal">
+      <h1>Know your genetic risks.<br>Keep your genetic secrets.</h1>
+      <p class="hero-sub">Symbolon lets you and your partner find out whether you carry the same inherited condition, without either of you, or us, ever seeing the other's results.</p>
+      <div class="actions center">
+        <a class="btn primary large" href="/signin">Sign in</a>
+        <a class="btn secondary large" href="#how">See how it works</a>
+      </div>
+    </section>
+
+    <section class="learn reveal" aria-labelledby="learn-title">
+      <h2 id="learn-title">The basics, one question at a time.</h2>
+
+      <details>
+        <summary>What is a carrier?</summary>
+        <div class="answer">
+          <p>You have two copies of almost every gene, one from each parent. A carrier has one copy that doesn't work and one that does.</p>
+          <p>Carriers are healthy. Most people carry a few of these changes and never know it.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Why does it matter for couples?</summary>
+        <div class="answer">
+          <p>Some conditions only affect a child who gets a non-working copy from both parents. If both partners carry the same gene, each pregnancy has a 25% (1 in 4) chance of a child being affected.</p>
+          <p>That is a chance, not a certainty. Options exist, and a genetic counselor can explain them.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>How does Symbolon keep it private?</summary>
+        <div class="answer">
+          <p>Picture each of you putting a padlock on every item on your list, then swapping lists. Each of you adds a second padlock to the other's items.</p>
+          <p>An item with both padlocks looks the same no matter whose lock went on first. So matching items line up, and nothing is ever unlocked. Your list stays on your device, and the server in the middle only ever sees locked items.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>What can I do with it?</summary>
+        <div class="answer">
+          <ul>
+            <li><strong>Couple check.</strong> Learn whether you share a carrier gene, either how many or which ones, as you both agree.</li>
+            <li><strong>Trial eligibility.</strong> Show a clinical trial one lab-verified finding, and nothing else.</li>
+            <li><strong>Later.</strong> The same idea could help with donor matching or community screening.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>What Symbolon doesn't do</summary>
+        <div class="answer">
+          <ul>
+            <li>It doesn't diagnose anything, and it isn't medical advice.</li>
+            <li>It never tells anyone whether to marry or have children.</li>
+            <li>"No match" means lower risk for the conditions tested, not zero risk. Conditions that weren't tested aren't covered.</li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <section id="how" class="how reveal" aria-labelledby="how-title" tabindex="-1">
+      <h2 id="how-title">A couple check, in four steps.</h2>
+      <p class="muted center">Meet Alex and Sam. They're synthetic, and so are their results.</p>
+      <ol class="walk">
+        <li class="walk-step">
+          <svg viewBox="0 0 120 80" role="img" aria-label="Two wallets, each holding a list from the lab">
+            <rect x="8" y="14" width="44" height="54" rx="8" class="ill-card"/>
+            <rect x="68" y="14" width="44" height="54" rx="8" class="ill-card"/>
+            <rect x="16" y="26" width="28" height="5" rx="2" class="ill-line"/><rect x="16" y="36" width="28" height="5" rx="2" class="ill-line"/><rect x="16" y="46" width="20" height="5" rx="2" class="ill-line"/>
+            <rect x="76" y="26" width="28" height="5" rx="2" class="ill-line"/><rect x="76" y="36" width="20" height="5" rx="2" class="ill-line"/>
+          </svg>
+          <h3>1. Results arrive from the lab.</h3>
+          <p>Alex's wallet holds three carrier results, Sam's holds two. The lab signs them, so nobody can fake them.</p>
+        </li>
+        <li class="walk-step">
+          <svg viewBox="0 0 120 80" role="img" aria-label="An invite code passed from one person to another">
+            <circle cx="28" cy="40" r="16" class="ill-card"/><circle cx="92" cy="40" r="16" class="ill-card"/>
+            <rect x="46" y="32" width="28" height="16" rx="4" class="ill-accent"/>
+          </svg>
+          <h3>2. They agree what to learn.</h3>
+          <p>Alex sends Sam an invite code. Sam sees exactly what they'll both learn before saying yes.</p>
+        </li>
+        <li class="walk-step">
+          <svg viewBox="0 0 120 80" role="img" aria-label="Two padlocked lists swapping places">
+            <rect x="14" y="30" width="30" height="24" rx="5" class="ill-accent"/><path d="M20 30 v-6 a9 9 0 0 1 18 0 v6" class="ill-stroke"/>
+            <rect x="76" y="30" width="30" height="24" rx="5" class="ill-accent"/><path d="M82 30 v-6 a9 9 0 0 1 18 0 v6" class="ill-stroke"/>
+            <path d="M48 36 h24 M66 31 l6 5 l-6 5 M72 48 h-24 M54 43 l-6 5 l6 5" class="ill-stroke"/>
+          </svg>
+          <h3>3. Lists are locked and swapped.</h3>
+          <p>Each wallet locks its list and they trade. Each adds a second lock, so matching items line up.</p>
+        </li>
+        <li class="walk-step">
+          <svg viewBox="0 0 120 80" role="img" aria-label="One matching item highlighted">
+            <rect x="24" y="16" width="72" height="48" rx="10" class="ill-card"/>
+            <circle cx="60" cy="40" r="12" class="ill-accent"/>
+          </svg>
+          <h3>4. They see only the answer.</h3>
+          <p>Both learn they share one carrier gene. Neither sees the other's full list, and the server sees neither.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="closing reveal">
+      <h2>Your results stay yours.</h2>
+      <div class="actions center"><a class="btn primary large" href="/signin">Sign in to your wallet</a></div>
+      <p class="small muted center">Symbolon is a demo with synthetic data. It is not a diagnosis or medical advice.</p>
+    </section>
+  </main>
 </body>
 </html>

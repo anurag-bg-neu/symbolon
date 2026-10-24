@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your wallet · Symbolon</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="banner" role="note">Demo with synthetic data. Not medical advice.</div>
+  <header class="top">
+    <a class="brand" href="/app">Symbolon</a>
+    <nav class="appnav" aria-label="Wallet">
+      <button type="button" data-nav="home">Home</button>
+      <button type="button" data-nav="start" hidden>Start a check</button>
+      <button type="button" data-nav="join" hidden>Join a check</button>
+    </nav>
+    <div class="who-wrap">
+      <span class="who" id="who" aria-label="Wallet owner"></span>
+      <button id="signout" type="button" class="btn small secondary">Sign out</button>
+    </div>
+  </header>
+  <main id="app" tabindex="-1" aria-labelledby="screen-title">
+    <noscript><p>This wallet needs JavaScript to run the check.</p></noscript>
+  </main>
+  <div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Privacy details panel ("What did everyone see?"), shown collapsed on results. -->
+  <script src="/privacy.js"></script>
+  <!-- Optional counselor UI. Delete this line (and the agent/ package) to remove
+       the feature; the check, result, and privacy details keep working. -->
+  <script src="/counselor.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

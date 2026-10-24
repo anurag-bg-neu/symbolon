@@ -48,7 +48,14 @@ def check(label: str, ok: bool, text: str) -> None:
 
 
 def client(app, name: str) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=f"http://{name}")
+    # Wallet apps need a signed-in session; give the client one, as a browser would
+    # hold after "Continue as <name>". Relay and trial apps have no sign-in.
+    cookies = {}
+    sessions = getattr(app.state, "sessions", None)
+    if sessions is not None:
+        cookies[app.state.cookie_name] = sessions.create()
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=f"http://{name}",
+                             cookies=cookies)
 
 
 RC = client(relay.app, "relay")
@@ -85,7 +92,7 @@ def shown(st: dict, mode: str):
 async def main() -> int:
     seed_demo.seed()
     pub = json.loads((keys.var_dir() / "wallets" / "alex.json").read_text())["lab_pubkey"]
-    print("GeneMatch backend demo (synthetic data, not medical advice)")
+    print("Symbolon backend demo (synthetic data, not medical advice)")
     print(f"Lab public key: {pub[:16]}...\n")
 
     for n, (a, b) in seed_demo.COUPLES.items():

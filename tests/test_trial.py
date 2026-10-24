@@ -22,6 +22,7 @@ from core.models import CLAIM_FINDING, SignedClaim
 from lab import keys
 from relay import service as relay
 from trial import service as trial_service
+from tests.helpers import signed_in_client
 from wallet.service import create_app as create_wallet
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,8 +229,7 @@ def clients(env, person: str):
                                 base_url="http://trial")
     relay_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app),
                                 base_url="http://relay")
-    w = httpx.AsyncClient(transport=httpx.ASGITransport(
-        app=create_wallet(person, relay_c, trial_c)), base_url=f"http://{person}")
+    w = signed_in_client(create_wallet(person, relay_c, trial_c), f"http://{person}")
     return w, trial_c
 
 
@@ -262,8 +262,7 @@ def test_wallet_end_to_end_eligible_and_sends_one_claim(env):
         trial_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=spy), base_url="http://trial")
         relay_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app),
                                     base_url="http://relay")
-        w = httpx.AsyncClient(transport=httpx.ASGITransport(
-            app=create_wallet("alex", relay_c, trial_c)), base_url="http://alex")
+        w = signed_in_client(create_wallet("alex", relay_c, trial_c), "http://alex")
         req = (await trial_c.post("/requests", json={"trial_id": BRCA1_TRIAL})).json()
         pending = (await w.get("/present/pending", params={"request_id": req["request_id"]})).json()
         out = (await w.post("/present", json={"request_id": req["request_id"],
@@ -304,8 +303,7 @@ def test_wallet_with_no_matching_claim_sends_nothing(env):
         trial_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=spy), base_url="http://trial")
         relay_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app),
                                     base_url="http://relay")
-        w = httpx.AsyncClient(transport=httpx.ASGITransport(
-            app=create_wallet("sam", relay_c, trial_c)), base_url="http://sam")
+        w = signed_in_client(create_wallet("sam", relay_c, trial_c), "http://sam")
         req = (await trial_c.post("/requests", json={"trial_id": BRCA1_TRIAL})).json()
         pending = (await w.get("/present/pending", params={"request_id": req["request_id"]})).json()
         out = (await w.post("/present", json={"request_id": req["request_id"],
@@ -324,8 +322,7 @@ def test_wallet_decline_sends_nothing(env):
         trial_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=spy), base_url="http://trial")
         relay_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app),
                                     base_url="http://relay")
-        w = httpx.AsyncClient(transport=httpx.ASGITransport(
-            app=create_wallet("alex", relay_c, trial_c)), base_url="http://alex")
+        w = signed_in_client(create_wallet("alex", relay_c, trial_c), "http://alex")
         req = (await trial_c.post("/requests", json={"trial_id": BRCA1_TRIAL})).json()
         return (await w.post("/present", json={"request_id": req["request_id"],
                                                 "approve": False})).json()
@@ -384,8 +381,7 @@ def test_wallet_trial_unavailable(env):
         dead = httpx.AsyncClient(transport=httpx.MockTransport(down), base_url="http://trial")
         relay_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app),
                                     base_url="http://relay")
-        w = httpx.AsyncClient(transport=httpx.ASGITransport(
-            app=create_wallet("alex", relay_c, dead)), base_url="http://alex")
+        w = signed_in_client(create_wallet("alex", relay_c, dead), "http://alex")
         return await w.post("/present", json={"request_id": "a" * 32, "approve": True})
     r = asyncio.run(go())
     assert r.status_code == 502 and r.json()["error"]["code"] == "TRIAL_UNAVAILABLE"

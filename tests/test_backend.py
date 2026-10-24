@@ -24,7 +24,7 @@ from core.models import CLAIM_FINDING
 from core.protocol import Session
 from lab import keys
 from relay import service as relay
-from tests.helpers import Lab
+from tests.helpers import Lab, signed_in_client
 
 ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location("seed_demo", ROOT / "scripts" / "seed_demo.py")
@@ -65,8 +65,7 @@ def relay_client() -> httpx.AsyncClient:
 
 
 def wallet_client(person_id: str, rc: httpx.AsyncClient) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(person_id, rc)),
-                             base_url=f"http://{person_id}")
+    return signed_in_client(create_app(person_id, rc), f"http://{person_id}")
 
 
 async def wait_terminal(w: httpx.AsyncClient, timeout: float = 5.0) -> dict:
@@ -122,7 +121,7 @@ def test_relay_create_and_join(rc):
     assert re.fullmatch(r"[0-9a-f]{32}", s["session_id"])
     assert re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{8}", s["invite_code"])
     j = rc.post("/sessions/join", json={"invite_code": s["invite_code"].lower()})
-    assert j.json() == {"session_id": s["session_id"], "mode": "detail"}
+    assert j.json() == {"session_id": s["session_id"], "mode": "detail", "inviter_name": None}
     assert rc.post("/sessions/join", json={"invite_code": s["invite_code"]}).status_code == 409
     assert rc.post("/sessions/join", json={"invite_code": "ZZZZZZZZ"}).status_code == 404
     assert rc.get(f"/sessions/{s['session_id']}/state").json()["state"] == "joined"
@@ -301,7 +300,9 @@ def test_wallet_me_and_idle(var):
         w = wallet_client("alex", relay_client())
         me = (await w.get("/me")).json()
         assert me == {"person_id": "alex", "genes": ["CFTR", "GBA", "PAH"], "count": 3,
-                      "claims": [{"gene": "BRCA1", "finding": CLAIM_FINDING}]}
+                      "claims": [{"gene": "BRCA1", "finding": CLAIM_FINDING}],
+                      "display_name": "Alex", "synthetic": True, "has_results": True,
+                      "lab_portal": "http://localhost:8200"}
         assert (await w.get("/check/status")).json()["state"] == "idle"
     asyncio.run(go())
 
@@ -398,8 +399,8 @@ def test_wallet_zeroes_scalar_on_completion_and_abort(var, decline_after_r0):
     async def go():
         rc = relay_client()
         app_a, app_b = create_app("alex", rc), create_app("sam", rc)
-        wa = httpx.AsyncClient(transport=httpx.ASGITransport(app=app_a), base_url="http://a")
-        wb = httpx.AsyncClient(transport=httpx.ASGITransport(app=app_b), base_url="http://b")
+        wa = signed_in_client(app_a, "http://a")
+        wb = signed_in_client(app_b, "http://b")
         s = (await wa.post("/check/start", json={"mode": "count"})).json()
         await wb.post("/check/join", json={"invite_code": s["invite_code"]})
         if decline_after_r0:
@@ -602,3 +603,27 @@ def test_demo_backend_script_passes():
                        cwd=ROOT)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "RESULT: all checks passed" in r.stdout
+
+
+# --- one-line invites: inviter name and grouped codes (task 11.3) --------------------
+
+
+def test_inviter_name_reaches_the_joiner_as_a_label(var):
+    async def go():
+        rc = relay_client()
+        wa, wb = wallet_client("alex", rc), wallet_client("sam", rc)
+        s = (await wa.post("/check/start", json={"mode": "count"})).json()
+        grouped = s["invite_code"][:4] + "-" + s["invite_code"][4:]
+        return (await wb.post("/check/join", json={"invite_code": grouped.lower()})).json()
+    j = asyncio.run(go())
+    assert j["inviter_name"] == "Alex" and j["mode"] == "count"
+
+
+def test_relay_inviter_name_is_capped_and_optional(rc):
+    long = rc.post("/sessions", json={"mode": "count", "inviter_name": "x" * 41})
+    assert long.status_code == 422
+    s = rc.post("/sessions", json={"mode": "count", "inviter_name": "  Alex \n Smith  "}).json()
+    j = rc.post("/sessions/join", json={"invite_code": s["invite_code"][:4] + "-" + s["invite_code"][4:]})
+    assert j.json()["inviter_name"] == "Alex Smith"
+    s2 = rc.post("/sessions", json={"mode": "detail"}).json()
+    assert rc.post("/sessions/join", json={"invite_code": s2["invite_code"]}).json()["inviter_name"] is None

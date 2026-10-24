@@ -1,4 +1,4 @@
-"""Requirement-linked property-based tests for the GeneMatch crypto core."""
+"""Requirement-linked property-based tests for the Symbolon crypto core."""
 
 from __future__ import annotations
 

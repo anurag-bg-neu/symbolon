@@ -8,26 +8,78 @@ Run: GENEMATCH_PERSON=alex uvicorn --factory wallet.service:create_app --port 81
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
 import re
+import secrets
+import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from core import crypto
 from core.claims import make_presentation, select_claim
+from core.labfile import LabFileError, verify_connect_claims, verify_lab_file
 from core.models import Mode, ProtocolError, Result, SignedClaim
 from core.protocol import Session
 from lab import keys
+from wallet.auth import Accounts, Sessions, demo_email, demo_password, load_accounts
 
 log = logging.getLogger("genematch.wallet")
 STATIC = Path(__file__).resolve().parent / "static"
+PAGES = Path(__file__).resolve().parent / "pages"
+MAX_UPLOAD = 100 * 1024
+PENDING_TTL = 10 * 60
+# Paths that need a signed-in session. Everything else (landing, sign-in, static
+# assets, /auth/*) is public and holds no personal data.
+PROTECTED_API = ("/me", "/check/", "/present", "/onboard/")
+JOIN_CODE = re.compile(r"[\s-]")
+SIGNED_OUT = {"code": "SIGNED_OUT", "user_message": "Please sign in to use your wallet."}
+NO_RESULTS = {"code": "NO_RESULTS", "user_message":
+              "Add your lab results first. Nothing was shared."}
+BUSY = {"code": "CHECK_IN_PROGRESS", "user_message":
+        "Finish or leave the current check before changing your results. Nothing was changed."}
+LAB_UNAVAILABLE = {"code": "LAB_UNAVAILABLE", "user_message":
+                   "We couldn't reach the lab, so nothing was changed. Please try again."}
+RAW_DNA = {"code": "RAW_DNA", "user_message":
+           "This looks like a raw DNA file. Symbolon only accepts results signed by a lab, "
+           "so nobody can fake them. Ask your lab for a Symbolon results file. "
+           "Nothing was stored."}
+FILE_TOO_LARGE = {"code": "FILE_TOO_LARGE", "user_message":
+                  "This file is too large to be a Symbolon lab file (limit 100 KB). "
+                  "Nothing was stored."}
+NOT_JSON = {"code": "NOT_LAB_FILE", "user_message":
+            "This isn't a Symbolon lab file. Nothing was stored."}
+EXPIRED_UPLOAD = {"code": "UPLOAD_EXPIRED", "user_message":
+                  "That upload expired. Please add the file again. Nothing was changed."}
+
+
+def looks_like_raw_dna(data: bytes, filename: str = "") -> bool:
+    """FASTQ, VCF, BAM/gzip, or consumer genotype exports (rsid tables)."""
+    name = filename.lower()
+    if name.endswith((".fastq", ".fq", ".vcf", ".bam", ".cram", ".gz", ".fastq.gz",
+                      ".vcf.gz", ".bcf")):
+        return True
+    if data[:2] == b"\x1f\x8b" or data[:4] == b"BAM\x01":
+        return True
+    head = data[:4096].decode("utf-8", "replace")
+    lines = [ln for ln in head.splitlines() if ln.strip()]
+    if head.startswith("##fileformat=VCF") or any(ln.startswith("#CHROM") for ln in lines[:50]):
+        return True
+    if len(lines) >= 4 and lines[0].startswith("@") and lines[2].startswith("+"):
+        return True  # FASTQ record
+    if re.search(r"^#?\s*rsid\b", head, re.IGNORECASE | re.MULTILINE):
+        return True
+    if sum(1 for ln in lines[:50] if re.match(r"^(rs|i)\d+[\t,]", ln)) >= 3:
+        return True  # 23andMe / AncestryDNA style rows
+    return False
 INVALID_INVITE = {"code": "INVALID_INVITE", "user_message":
                   "That invite code isn't valid or was already used. Nothing was shared."}
 # Both modes also reveal each person's total carrier count (the lab-signed count is
@@ -98,21 +150,47 @@ def _signed_meta(round1: dict[str, Any]) -> dict[str, Any]:
             "lab_sig": round1["lab_sig"][:8]}
 
 
+class SignInBody(BaseModel):
+    email: str
+    password: str
+
+
+
+class ConfirmBody(BaseModel):
+    pending_id: str
+
+
 def create_app(person_id: str | None = None,
                relay: httpx.AsyncClient | None = None,
-               trial: httpx.AsyncClient | None = None) -> FastAPI:
+               trial: httpx.AsyncClient | None = None,
+               lab: httpx.AsyncClient | None = None) -> FastAPI:
     person_id = person_id or os.environ.get("GENEMATCH_PERSON", "alex")
-    wallet = json.loads((keys.var_dir() / "wallets" / f"{person_id}.json").read_text())
+    wallet_path = keys.var_dir() / "wallets" / f"{person_id}.json"
+    wallet = json.loads(wallet_path.read_text())
     relay = relay or httpx.AsyncClient(
         base_url=os.environ.get("GENEMATCH_RELAY", "http://localhost:8000"), timeout=5)
     trial = trial or httpx.AsyncClient(
         base_url=os.environ.get("GENEMATCH_TRIAL", "http://localhost:8300"), timeout=5)
+    lab = lab or httpx.AsyncClient(
+        base_url=os.environ.get("GENEMATCH_LAB", "http://localhost:8200"), timeout=5)
     presentations: list[dict[str, Any]] = []  # what this wallet sent to trials
     poll = float(os.environ.get("GENEMATCH_POLL", "0.5"))
     panel = {e["gene"]: e for e in keys.load_panel()}
-    app = FastAPI(title=f"GeneMatch wallet ({person_id})")
+    app = FastAPI(title=f"Symbolon wallet ({person_id})")
     holder = {"check": _new_check()}
     app.state.holder = holder  # lets tests inspect the live Session
+
+    accounts = Accounts(person_id, load_accounts(keys.var_dir() / "accounts.json"))
+    sessions = Sessions()
+    cookie = f"gm_session_{person_id}"  # per wallet: localhost cookies ignore the port
+    app.state.sessions = sessions
+    app.state.cookie_name = cookie
+    connects: dict[str, dict[str, Any]] = {}   # one-time state -> request, token, holder seed
+    app.state.connects = connects  # lets tests age or inspect pending Connect states
+    pending_uploads: dict[str, dict[str, Any]] = {}
+
+    def signed_in(request: Request) -> bool:
+        return sessions.valid(request.cookies.get(cookie))
 
     @app.exception_handler(ProtocolError)
     async def protocol_error(_req, e: ProtocolError):
@@ -123,6 +201,71 @@ def create_app(person_id: str | None = None,
         if request.method not in ("GET", "HEAD", "OPTIONS") and not _same_origin(request):
             return JSONResponse({"error": FORBIDDEN_ORIGIN}, status_code=403)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def auth_guard(request: Request, call_next):
+        path = request.url.path
+        if path.startswith(PROTECTED_API) and not signed_in(request):
+            return JSONResponse({"error": SIGNED_OUT}, status_code=401)
+        return await call_next(request)
+
+    # --- sign-in -------------------------------------------------------------
+
+    def _start_session(next_url: str = "/app") -> JSONResponse:
+        resp = JSONResponse({"ok": True, "next": next_url})
+        resp.set_cookie(cookie, sessions.create(), max_age=sessions.ttl, path="/",
+                        httponly=True, samesite="lax")
+        return resp
+
+    @app.post("/auth/signin")
+    def auth_signin(body: SignInBody):
+        outcome, other = accounts.check(body.email, body.password)
+        if outcome == "wrong_wallet":
+            return JSONResponse({"error": {"code": "WRONG_WALLET", "user_message":
+                                           accounts.wrong_wallet_message(other)}}, status_code=403)
+        if outcome != "ok":
+            return JSONResponse({"error": {"code": "BAD_LOGIN", "user_message":
+                                           "That email and password don't match. Please try again."}},
+                                status_code=401)
+        return _start_session()
+
+    @app.post("/auth/demo")
+    def auth_demo():
+        """"Continue as <name>": demo shortcut for this wallet's own account."""
+        if person_id not in accounts.accounts:
+            return JSONResponse({"error": {"code": "NO_ACCOUNT", "user_message":
+                                           "This wallet has no demo account yet. "
+                                           "Run the seed script first."}}, status_code=404)
+        return _start_session()
+
+    @app.post("/auth/signout")
+    def auth_signout(request: Request):
+        sessions.revoke(request.cookies.get(cookie))
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(cookie, path="/")
+        return resp
+
+    @app.get("/auth/session")
+    def auth_session(request: Request) -> dict:
+        return {"signed_in": signed_in(request), "person_id": person_id,
+                "display_name": accounts.display_name(),
+                "demo_email": demo_email(person_id), "demo_password": demo_password(person_id)}
+
+    @app.get("/signin")
+    def signin_page():
+        return FileResponse(STATIC / "signin.html")
+
+    @app.get("/app")
+    def app_page(request: Request):
+        if not signed_in(request):
+            return RedirectResponse("/signin", status_code=303)
+        return FileResponse(PAGES / "app.html")
+
+    def has_results() -> bool:
+        return wallet.get("credential") is not None
+
+    def save_wallet() -> None:
+        keys.write_private(wallet_path, wallet)
 
     # --- relay calls -------------------------------------------------------
 
@@ -254,11 +397,18 @@ def create_app(person_id: str | None = None,
         return {"person_id": wallet["person_id"], "genes": wallet["genes"],
                 "count": len(wallet["genes"]),
                 "claims": [{"gene": c["gene"], "finding": c["finding"]}
-                           for c in wallet["claims"]]}
+                           for c in wallet["claims"]],
+                "display_name": accounts.display_name(),
+                "synthetic": True, "has_results": has_results(),
+                "lab_portal": os.environ.get("GENEMATCH_LAB_PUBLIC",
+                                             "http://localhost:8200").rstrip("/")}
 
     @app.post("/check/start")
-    async def start(body: StartBody) -> dict:
-        r = await call("POST", "/sessions", json={"mode": body.mode})
+    async def start(body: StartBody):
+        if not has_results():
+            return JSONResponse({"error": NO_RESULTS}, status_code=409)
+        r = await call("POST", "/sessions", json={"mode": body.mode,
+                                                  "inviter_name": accounts.display_name()[:40]})
         if r.status_code != 200:
             # call() already maps 5xx (including "relay full"); any other non-200
             # means there is no session to use, so report it instead of a KeyError.
@@ -271,15 +421,21 @@ def create_app(person_id: str | None = None,
 
     @app.post("/check/join")
     async def join(body: JoinBody):
-        r = await call("POST", "/sessions/join", json={"invite_code": body.invite_code})
+        if not has_results():
+            return JSONResponse({"error": NO_RESULTS}, status_code=409)
+        code = JOIN_CODE.sub("", body.invite_code).upper()  # accepts 7K4Q-9PXA or 7k4q9pxa
+        r = await call("POST", "/sessions/join", json={"invite_code": code})
         if r.status_code != 200:
             return JSONResponse({"error": INVALID_INVITE}, status_code=400)
         data = r.json()
         # Joining sends no protocol data; nothing leaves this wallet until accept.
         reset(state="awaiting_accept", mode=data["mode"], sid=data["session_id"],
               role="joiner")
+        # The inviter's name comes via the relay, so it is only a display label.
+        name = data.get("inviter_name")
+        name = " ".join(name.split())[:40] if isinstance(name, str) and name.strip() else None
         return {"session_id": data["session_id"], "mode": data["mode"],
-                "mode_text": MODE_TEXT[data["mode"]]}
+                "mode_text": MODE_TEXT[data["mode"]], "inviter_name": name}
 
     @app.post("/check/accept")
     async def accept() -> dict:
@@ -405,6 +561,127 @@ def create_app(person_id: str | None = None,
         if r.status_code != 200:
             return JSONResponse({"error": TRIAL_UNAVAILABLE}, status_code=502)
         return r.json()
+
+    # --- onboarding: Connect your lab -----------------------------------------
+
+    def idle() -> bool:
+        return holder["check"]["state"] in ("idle", "done", "failed", "declined")
+
+    def apply_results(cred, genes: list[str], claims_list=None, holder_seed: str | None = None):
+        wallet["credential"] = cred.model_dump()
+        wallet["genes"] = genes
+        if claims_list is not None:
+            wallet["claims"] = [c.model_dump() for c in claims_list]
+        if holder_seed is not None:
+            wallet["holder_seed"] = holder_seed
+        save_wallet()
+
+    @app.post("/onboard/connect")
+    async def onboard_connect(request: Request):
+        if not idle():
+            return JSONResponse({"error": BUSY}, status_code=409)
+        seed = secrets.token_bytes(32)  # new holder key, generated here; lab sees only the public key
+        pub = crypto.pubkey_from_seed(seed).hex()
+        state = secrets.token_urlsafe(32)  # one-time, bound to this wallet session
+        return_url = f"{request.url.scheme}://{request.headers.get('host', '')}/connect/callback"
+        try:
+            r = await lab.post("/connect/requests", json={
+                "person_id": person_id, "holder_pubkey": pub, "return_url": return_url,
+                "state": state})
+        except httpx.HTTPError:
+            return JSONResponse({"error": LAB_UNAVAILABLE}, status_code=502)
+        if r.status_code != 200:
+            return JSONResponse({"error": LAB_UNAVAILABLE}, status_code=502)
+        data = r.json()
+        now = time.time()
+        for s in [k for k, v in connects.items() if v["expires"] < now]:
+            connects.pop(s, None)
+        connects[state] = {"request_id": data["request_id"], "token": data["collect_token"],
+                           "seed": seed.hex(), "pub": pub, "used": False,
+                           "session": request.cookies.get(cookie),
+                           "expires": now + PENDING_TTL}
+        return {"consent_url": data["consent_url"]}
+
+    def back_to_app(fragment: str) -> RedirectResponse:
+        return RedirectResponse(f"/app#{fragment}", status_code=303)
+
+    @app.get("/connect/callback")
+    async def connect_callback(request: Request, state: str = "", outcome: str = ""):
+        """The lab sends the browser here after Send or Don't send."""
+        if not signed_in(request):
+            return RedirectResponse("/signin", status_code=303)
+        pend = connects.get(state) if state else None
+        if (pend is None or pend["expires"] < time.time()
+                or not hmac.compare_digest(pend["session"] or "", request.cookies.get(cookie) or "")):
+            return back_to_app("connect-error=STATE_INVALID")
+        if pend["used"]:
+            return back_to_app("connect-error=STATE_USED")
+        pend["used"] = True  # consumed on first use, kept until expiry to detect reuse
+        if outcome == "declined":
+            return back_to_app("connect-declined")
+        if not idle():
+            return back_to_app("connect-error=NOT_APPROVED")
+        try:
+            r = await lab.get(f"/connect/{pend['request_id']}/result",
+                              headers={"X-Collect-Token": pend["token"]})
+        except httpx.HTTPError:
+            return back_to_app("connect-error=LAB_UNAVAILABLE")
+        if r.status_code == 409:  # the lab's answer wins over the URL's outcome
+            return back_to_app("connect-declined")
+        if r.status_code == 202:
+            return back_to_app("connect-error=NOT_APPROVED")
+        if r.status_code != 200:
+            return back_to_app("connect-error=LAB_UNAVAILABLE")
+        data = r.json()
+        try:
+            cred, genes, _ = verify_lab_file(data.get("lab_file"), wallet["lab_pubkey"], person_id)
+            claim_objs = verify_connect_claims(data.get("claims"), wallet["lab_pubkey"],
+                                               person_id, pend["pub"])
+        except LabFileError:
+            return back_to_app("connect-error=TAMPERED")
+        apply_results(cred, genes, claim_objs, pend["seed"])
+        pend["seed"] = None
+        return back_to_app("results-added")
+
+    # --- onboarding: Add your lab file -----------------------------------------
+
+    @app.post("/onboard/upload")
+    async def onboard_upload(request: Request):
+        length = request.headers.get("content-length")
+        if length is not None and (not length.isdigit() or int(length) > MAX_UPLOAD):
+            return JSONResponse({"error": FILE_TOO_LARGE}, status_code=413)
+        data = b""
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > MAX_UPLOAD:
+                return JSONResponse({"error": FILE_TOO_LARGE}, status_code=413)
+        filename = request.headers.get("x-file-name", "")
+        if looks_like_raw_dna(data, filename):
+            return JSONResponse({"error": RAW_DNA}, status_code=400)
+        try:
+            doc = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return JSONResponse({"error": NOT_JSON}, status_code=400)
+        try:
+            cred, genes, name = verify_lab_file(doc, wallet["lab_pubkey"], person_id)
+        except LabFileError as e:
+            return JSONResponse({"error": e.to_dict()}, status_code=400)
+        for pid in [k for k, v in pending_uploads.items() if v["expires"] < time.time()]:
+            pending_uploads.pop(pid, None)
+        pid = secrets.token_hex(16)
+        pending_uploads[pid] = {"cred": cred, "genes": genes, "expires": time.time() + PENDING_TTL}
+        return {"pending_id": pid, "display_name": name, "genes": genes, "count": len(genes),
+                "replaces": has_results(), "current_count": len(wallet["genes"])}
+
+    @app.post("/onboard/upload/confirm")
+    def onboard_upload_confirm(body: ConfirmBody):
+        pend = pending_uploads.pop(body.pending_id, None)
+        if pend is None or pend["expires"] < time.time():
+            return JSONResponse({"error": EXPIRED_UPLOAD}, status_code=404)
+        if not idle():
+            return JSONResponse({"error": BUSY}, status_code=409)
+        apply_results(pend["cred"], pend["genes"])  # claims and holder key are kept
+        return {"status": "replaced", "count": len(pend["genes"])}
 
     if STATIC.is_dir():
         app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

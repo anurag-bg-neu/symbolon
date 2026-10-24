@@ -1,0 +1,9 @@
+{
+  "_note": "Synthetic demo records held by the GeneMatch Demo Lab. Not real people.",
+  "alex":   {"display_name": "Alex",   "genes": ["CFTR", "GBA", "PAH"],   "findings": ["BRCA1"]},
+  "sam":    {"display_name": "Sam",    "genes": ["CFTR", "HEXA"],         "findings": []},
+  "jordan": {"display_name": "Jordan", "genes": ["HBB", "SMN1"],          "findings": []},
+  "riley":  {"display_name": "Riley",  "genes": ["ASPA", "FANCC", "PAH"], "findings": []},
+  "casey":  {"display_name": "Casey",  "genes": ["HBB", "HEXA", "SMN1"],  "findings": []},
+  "morgan": {"display_name": "Morgan", "genes": ["HBB", "SMN1", "GBA"],   "findings": ["BRCA2"]}
+}

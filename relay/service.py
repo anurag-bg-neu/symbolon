@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Path, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.models import MAX_SET, Mode, Role
 
@@ -71,6 +71,8 @@ def _check_payload(payload: dict[str, Any]) -> None:
 
 class CreateBody(BaseModel):
     mode: Mode
+    # Display label only (the relay could lie about it); at most 40 characters.
+    inviter_name: str | None = Field(default=None, max_length=40)
 
 
 class JoinBody(BaseModel):
@@ -140,8 +142,9 @@ def create(body: CreateBody) -> dict:
     code = "".join(secrets.choice(CROCKFORD) for _ in range(8))
     while code in CODES:
         code = "".join(secrets.choice(CROCKFORD) for _ in range(8))
+    name = " ".join((body.inviter_name or "").split())[:40] or None
     SESSIONS[sid] = {"mode": body.mode, "state": "waiting", "created": time.time(),
-                     "code": code, "rounds": {}, "log": []}
+                     "code": code, "rounds": {}, "log": [], "inviter_name": name}
     CODES[code] = sid
     return {"session_id": sid, "invite_code": code}
 
@@ -149,12 +152,12 @@ def create(body: CreateBody) -> dict:
 @app.post("/sessions/join")
 def join(body: JoinBody) -> dict:
     _sweep()
-    sid = CODES.get(body.invite_code.strip().upper())
+    sid = CODES.get("".join(body.invite_code.split()).replace("-", "").upper())
     if sid is None:
         raise HTTPException(404, "unknown invite code")
     sess = SESSIONS[sid]
     _move(sess, ("waiting",), "joined")
-    return {"session_id": sid, "mode": sess["mode"]}
+    return {"session_id": sid, "mode": sess["mode"], "inviter_name": sess.get("inviter_name")}
 
 
 @app.post("/sessions/{sid}/accept")
