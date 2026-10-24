@@ -45,6 +45,19 @@ Notation is additive (ristretto255). `H(g) = ristretto255_from_hash(SHA-512("gen
 
 Both parties learn the same output because the intersection is symmetric and both rounds use the same mode.
 
+## Correctness properties
+
+The crypto core is checked with Hypothesis against the following requirement-linked properties. P6 concerns fresh blinded **point values** on the wire; it does not claim full transcript unlinkability because round 1 deliberately reuses signed credential metadata, as documented under Threat model.
+
+| ID | Property | Requirements verified |
+|---|---|---|
+| **P1 Correctness** | For any two generated subsets `A` and `B` of the autosomal-recessive gene panel, an honest PSI run reports exactly `A ∩ B`: Detail mode returns the shared genes and Count mode returns exactly their count, never more or less. Both parties receive the same result. | 3.4, 5.5, 5.6 |
+| **P2 Commutativity** | For random non-zero canonical scalars `a`, `b` and a random panel gene `g`, `a·(b·H(g)) == b·(a·H(g))`. | 5.5, 5.6 |
+| **P3 Order independence** | Shuffling either party's input genes before issuance never changes the PSI result in either mode. | 5.5, 5.6 |
+| **P4 Validation** | Every generated 32-byte string that is not a valid ristretto255 encoding is rejected, and the identity is always rejected. | 5.4 |
+| **P5 Key separation** | For any panel gene, tokens issued under two distinct non-zero lab keys do not match. | 1.1, 1.4 |
+| **P6 Unlinkability** | Two runs over the same non-empty input, using distinct fresh session scalars, produce different blinded point values in their round-1 wire messages. | 5.1, 5.2 |
+
 ### Why lab tokens (the small-domain attack)
 
 The panel has fewer than 100 genes. With plain DH-PSI on `H(g)`, a malicious partner could put every panel gene into their own set and learn the other person's entire carrier list. Lab tokens block this: computing `T_g` requires `k_lab`, so a partner can only include tokens the lab issued to them, and the signed count caps how many. This is a lightweight version of authorized PSI (Baldi et al., CCS 2011; De Cristofaro and Tsudik).

@@ -54,6 +54,8 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: 1.1, 1.2, 4.3, 5.4_
   - [x] 1.5 Add the repository-local `crypto-rules-guard` hook and document its safeguards in the specification and `KIRO.md`
     - _Requirements: none (tooling)_
+  - [x] 1.6 Add Hypothesis property-based tests for PSI correctness, DH commutativity, input-order independence, point validation, lab-key separation, and fresh wire blinding; document the properties and results in `design.md` and `KIRO.md`
+    - _Requirements: 1.1, 1.4, 3.4, 5.1, 5.2, 5.4, 5.5, 5.6_
 
 - [ ] 2. Gene panel and lab service
   - [ ] 2.1 **P3**, 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
