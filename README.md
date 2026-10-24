@@ -2,11 +2,11 @@
 
 **Know your genetic risks. Keep your genetic secrets.**
 
-Symbolon gives you a lab-signed genetic credential that never leaves your device. Using privacy-preserving cryptography, you answer exactly one question at a time, such as *"Are we at risk together?"* or *"Am I eligible for this trial?"* — and nobody ever sees your genome: not your partner, not the server, not the AI.
+Symbolon gives you a lab-signed genetic credential that never leaves your device. Using privacy-preserving cryptography, you answer exactly one question at a time, such as *"Are we at risk together?"* or *"Am I eligible for this trial?"* — and nobody ever sees your genome: not your partner, not the server, not the counselor.
 
 > We don't decide who you love. We make sure you're never surprised.
 
-**Track:** Healthcare & Biotech · Hackachusetts 2026 · Built with Kiro ([how we used Kiro](KIRO.md))
+**Challenge track: Healthcare & Biotech** · Hackachusetts 2026 · Built with Kiro ([how we used Kiro](KIRO.md))
 
 *Demo with synthetic data. Not medical advice.*
 
@@ -26,6 +26,7 @@ Symbolon gives you a lab-signed genetic credential that never leaves your device
 - [Known limitations](#known-limitations)
 - [Where this can go](#where-this-can-go)
 - [Prior art](#prior-art)
+- [License](#license)
 
 ---
 
@@ -43,7 +44,7 @@ One credential, two use cases.
 
 Most serious inherited childhood diseases — cystic fibrosis, sickle cell disease, Tay-Sachs, spinal muscular atrophy — are **autosomal recessive**: a child is affected only if *both* parents pass on a broken copy of the same gene. Carriers are healthy and usually don't know. If both partners carry the same gene, each pregnancy has a 25% chance of an affected child.
 
-Symbolon compares two partners' carrier genes with **private set intersection (PSI)**. Each partner learns only the agreed result — either *how many* conditions they share, or *which* ones — and nothing else. An AI counselor then explains the result in plain language and suggests questions to bring to a genetic counselor.
+Symbolon compares two partners' carrier genes with **private set intersection (PSI)**. Each partner learns only the agreed result — either *how many* conditions they share, or *which* ones — and nothing else. A counselor agent then explains the result in plain language, using curated facts from the gene panel, and suggests questions to bring to a genetic counselor.
 
 ### 2 · Clinical trial eligibility
 
@@ -74,7 +75,7 @@ The same credential proves *"I carry the variant this trial requires."* The lab 
 | A partner probing your whole carrier status | Lab-issued tokens plus a signed count cap stop someone from entering every gene in the panel. |
 | Changing your input after seeing the partner's | Commit-then-reveal: both sides lock in before anything is revealed. |
 | The server learning anything | The relay sees only scrambled points. Results are computed on each device. |
-| The AI learning your genes | In count mode it receives only a number. In detail mode it receives only what both partners already agreed to learn. |
+| The counselor learning your genes | In count mode it receives only a number. In detail mode it receives only what both partners already agreed to learn. |
 | A copied trial claim being replayed | Each presentation requires the holder's signature over a fresh, single-use nonce. |
 
 ## Quick start
@@ -146,7 +147,7 @@ wallet/    Per-user client service + UI (holds the credential and secret scalar)
   static/        landing, sign-in, app.js, privacy.js, counselor.js, styles
   pages/         auth-gated app shell
 trial/     Trial verifier service + verifier page
-agent/     Counselor agent (template now, LLM hook for Bedrock later)
+agent/     Counselor agent (curated template; LLM hook for future scope)
 data/      Gene panel, demo trials, synthetic records and genomes
 scripts/   seed_demo, run_demo (sh / ps1), demo helpers
 tests/     Unit, protocol, adversarial, property-based, UI, and backend tests
@@ -161,7 +162,7 @@ Ports: relay 8000, Alex 8101, Sam 8102, lab 8200, trial 8300. Demo keys and wall
 - **rbcl** (libsodium bindings) — ristretto255 for the PSI
 - **PyNaCl 1.6.x** — Ed25519 signatures
 - **Pydantic 2** — strict wire models
-- **Amazon Bedrock** — AI counselor, with a deterministic template fallback (template only in this build)
+- **Counselor agent** — deterministic explanations built from curated gene-panel facts, with output checks (25% risk statement, counselor referral, disclaimer) and a marked hook for a future LLM
 - **Plain HTML / CSS / JS** — no frontend framework, no build step
 - **Data** — autosomal-recessive gene panel plus synthetic people and genomes
 - **Kiro** — spec, steering, and agent hook in [`.kiro/`](.kiro/); write-up in [`KIRO.md`](KIRO.md)
@@ -190,8 +191,18 @@ Stated honestly:
 
 The same credential could support community premarital screening (the model Dor Yeshorim has run for decades, without a central database), donor matching at fertility clinics, private drug-gene safety checks at pharmacies, and family cascade testing. **The cryptography is open; the moat is the lab network — and the fact that the genome can never leak.**
 
+**Future scope:**
+- **LLM counselor on Amazon Bedrock.** A Claude model would personalise the explanation and answer follow-up questions. The hook is already marked in `agent/counselor.py`, and `explain()` already checks any model output against the same safety rules the template meets, falling back to the template if a check fails. The privacy rule stays the same: in count mode the model would receive only a number.
+- **Zero-knowledge proof of the full set** (stretch S1), so a partner can't omit a carrier gene.
+- **DLEQ proofs for round 2** (stretch S1b), so neither a partner nor the relay can force a false result.
+- **Post-quantum PSI** (stretch S3), because genomic data stays sensitive for life.
+
 ## Prior art
 
 - Baldi, Baronio, De Cristofaro, Gasti, Tsudik — *Countering GATTACA: Efficient and Secure Testing of Fully-Sequenced Human Genomes*, ACM CCS 2011. Private genetic compatibility tests via private set operations.
 - De Cristofaro and Tsudik — authorized private set intersection.
 - Dor Yeshorim — anonymous community carrier matching, without cryptography.
+
+## License
+
+[MIT](LICENSE)

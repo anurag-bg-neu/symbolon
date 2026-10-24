@@ -1,5 +1,7 @@
 # How we used Kiro
 
+**Challenge track: Healthcare & Biotech** (Hackachusetts 2026).
+
 Symbolon was built in one day with **Kiro IDE**. Our strategy was to write the spec before the code. Steering then kept every Kiro session tied to that spec, and an agent hook re-checked the crypto rules on every save. Everything below is in [`.kiro/`](.kiro/).
 
 | Kiro feature | Where | What it did for us |
