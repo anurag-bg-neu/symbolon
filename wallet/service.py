@@ -28,10 +28,15 @@ log = logging.getLogger("genematch.wallet")
 STATIC = Path(__file__).resolve().parent / "static"
 INVALID_INVITE = {"code": "INVALID_INVITE", "user_message":
                   "That invite code isn't valid or was already used. Nothing was shared."}
+# Both modes also reveal each person's total carrier count (the lab-signed count is
+# sent in round 1), so consent text must say so (Req 3.2).
+COUNT_DISCLOSURE = (" You will also each see how many carrier genes the other person "
+                    "has in total, but not which ones.")
 MODE_TEXT = {
-    "count": "You will both learn only how many carrier genes you share, not which ones.",
+    "count": "You will both learn only how many carrier genes you share, not which ones."
+             + COUNT_DISCLOSURE,
     "detail": "You will both learn which carrier genes you share. "
-              "Neither of you learns the genes only the other carries.",
+              "Neither of you learns the genes only the other carries." + COUNT_DISCLOSURE,
 }
 # Relay states that mean the other side stopped the check.
 STOPPED = {"declined": "PEER_DECLINED", "failed": "PEER_FAILED",
@@ -66,7 +71,18 @@ class JoinBody(BaseModel):
 def _new_check(**kw: Any) -> dict[str, Any]:
     return {"state": "idle", "mode": None, "round": None, "result": None,
             "explanation": None, "error": None, "sid": None, "role": None,
-            "session": None, "task": None, "counselor_input": None, **kw}
+            "session": None, "task": None, "counselor_input": None,
+            "own_meta": None, "peer_meta": None, **kw}
+
+
+def _signed_meta(round1: dict[str, Any]) -> dict[str, Any]:
+    """Round-1 signed metadata as the transparency panel shows it.
+
+    person_id, count, and issued_at as sent; commitment and lab_sig as 8-hex prefixes.
+    """
+    return {"person_id": round1["person_id"], "count": round1["count"],
+            "issued_at": round1["issued_at"], "commitment": round1["commitment"][:8],
+            "lab_sig": round1["lab_sig"][:8]}
 
 
 def create_app(person_id: str | None = None,
@@ -148,10 +164,14 @@ def create_app(person_id: str | None = None,
             await post_round(sid, 0, role, s.round0().model_dump())
             s.receive_commitment(await wait_peer(sid, 0, role))
             check["round"] = 1
-            await post_round(sid, 1, role, s.round1().model_dump())
+            own1 = s.round1().model_dump()
+            await post_round(sid, 1, role, own1)
+            check["own_meta"] = _signed_meta(own1)
             peer1 = await wait_peer(sid, 1, role)
             check["round"] = 2
-            await post_round(sid, 2, role, s.round2(peer1).model_dump())
+            double = s.round2(peer1)  # verifies peer1 first
+            check["peer_meta"] = _signed_meta(peer1)
+            await post_round(sid, 2, role, double.model_dump())
             result = s.result(await wait_peer(sid, 2, role))
         except ProtocolError as e:
             log.info("check failed: %s", e.code)
@@ -222,6 +242,10 @@ def create_app(person_id: str | None = None,
     @app.post("/check/start")
     async def start(body: StartBody) -> dict:
         r = await call("POST", "/sessions", json={"mode": body.mode})
+        if r.status_code != 200:
+            # call() already maps 5xx (including "relay full"); any other non-200
+            # means there is no session to use, so report it instead of a KeyError.
+            raise ProtocolError("RELAY_UNAVAILABLE", f"create returned {r.status_code}")
         data = r.json()
         check = reset(state="waiting_for_partner", mode=body.mode,
                       sid=data["session_id"], role="initiator")
@@ -274,14 +298,20 @@ def create_app(person_id: str | None = None,
             except httpx.HTTPError:
                 pass
         me_items = _items(t["received"], "from your partner")
+        me_items += _meta_items(check["peer_meta"], "from your partner")
         if check["result"]:
             me_items.append({"label": "result", "value": check["result"]})
+        partner_items = _items(t["sent"], "from you") + _meta_items(check["own_meta"],
+                                                                    "from you")
+        relay_items: list[dict] = []
+        for e in relay_log:
+            relay_items.append({"label": f"round {e['round']} {e['kind']} from {e['role']}",
+                                "value": e["prefixes"]})
+            relay_items += _meta_items(e.get("meta"), f"from {e['role']}")
         return {"parties": [
             {"party": "me", "items": me_items},
-            {"party": "partner", "items": _items(t["sent"], "from you")},
-            {"party": "relay", "items": [
-                {"label": f"round {e['round']} {e['kind']} from {e['role']}",
-                 "value": e["prefixes"]} for e in relay_log]},
+            {"party": "partner", "items": partner_items},
+            {"party": "relay", "items": relay_items},
             {"party": "agent", "items": [{"label": "counselor input",
                                           "value": check["counselor_input"]}]
              if check["counselor_input"] is not None else []},
@@ -290,6 +320,21 @@ def create_app(person_id: str | None = None,
     if STATIC.is_dir():
         app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
+
+
+META_LABELS = {"person_id": "person ID", "count": "carrier count", "issued_at": "issue time",
+               "commitment": "credential commitment", "lab_sig": "lab signature"}
+
+
+def _meta_items(meta: dict[str, Any] | None, source: str) -> list[dict]:
+    """Round-1 signed metadata as {label, value}: plain IDs, counts, times, 8-hex prefixes.
+
+    Values from the relay log are untrusted; the UI must render them as text.
+    """
+    if not isinstance(meta, dict):
+        return []
+    return [{"label": f"{label} {source}", "value": meta[key]}
+            for key, label in META_LABELS.items() if key in meta]
 
 
 def _items(rounds: dict[str, Any], source: str) -> list[dict]:

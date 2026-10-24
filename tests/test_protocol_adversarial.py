@@ -359,11 +359,11 @@ def test_round2_permutation_mislabels_genes(lab):
     reorder its round 2, so Alex names the wrong shared gene (documented)."""
     a = make_person(lab, "casey", ["HBB", "HEXA", "SMN1"])
     b = make_person(lab, "morgan", ["GBA", "HBB", "SMN1"])
-    seen = set()
-    for perm in ([0, 1, 2], [1, 0, 2], [2, 1, 0]):
-        sa, sb, xa, xb = to_round1(lab, a, b, "detail")
-        sa.round2(xb)
-        ya = sb.round2(xa)
-        reordered = DoubleBlinded(points=[ya.points[i] for i in perm])
-        seen.add(tuple(sa.result(reordered).shared_genes))
-    assert ("HBB", "SMN1") in seen and len(seen) > 1
+    # Two of Casey's three slots match. A cyclic shift moves every point, so the
+    # one non-matching point always lands in a slot whose gene is then reported.
+    sa, sb, xa, xb = to_round1(lab, a, b, "detail")
+    sa.round2(xb)
+    ya = sb.round2(xa)
+    shifted = DoubleBlinded(points=ya.points[1:] + ya.points[:1])
+    r = sa.result(shifted)
+    assert r.shared_count == 2 and r.shared_genes != ["HBB", "SMN1"]  # wrong gene named

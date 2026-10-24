@@ -165,9 +165,14 @@ def test_relay_release_rules(rc):
     assert get(1, "initiator").status_code == 204
     _post(rc, sid, 1, "joiner", {"blinded": ["44" * 32]})
     _post(rc, sid, 2, "initiator", {"points": ["55" * 32]})
-    assert get(2, "joiner").json() == {"points": ["55" * 32]}
+    # Round 2 waits for both sides, so the joiner cannot copy or reorder the
+    # initiator's double-blinded points into its own round 2.
+    assert get(2, "joiner").status_code == 204
+    assert get(2, "initiator").status_code == 204
     assert rc.get(f"/sessions/{sid}/state").json()["state"] == "accepted"
     _post(rc, sid, 2, "joiner", {"points": ["66" * 32]})
+    assert get(2, "joiner").json() == {"points": ["55" * 32]}
+    assert get(2, "initiator").json() == {"points": ["66" * 32]}
     assert rc.get(f"/sessions/{sid}/state").json()["state"] == "done"
 
 
@@ -181,7 +186,39 @@ def test_relay_log_prefixes_only(rc):
     assert [e["kind"] for e in entries] == ["commitment", "commitment", "blinded_set"]
     assert entries[2]["prefixes"] == ["efefefef", "01010101"]
     assert all(HEX8.match(p) for e in entries for p in e["prefixes"])
-    assert "alex" not in json.dumps(entries) and "9999" not in json.dumps(entries)
+    # Round 1 also lists the signed metadata the relay received (Req 7.1):
+    # IDs and counts as-is, hashes and signatures as 8-hex prefixes only.
+    assert entries[2]["meta"] == {"person_id": "alex", "count": 2, "commitment": "99999999"}
+    assert "meta" not in entries[0] and "99" * 32 not in json.dumps(entries)
+
+
+@pytest.mark.parametrize("payload,code", [
+    ({"blinded": ["ab" * 32] * 21}, 413),          # more than MAX_SET points
+    ({"h": "ab" * 200}, 413),                      # oversized string
+    ({f"k{i}": 1 for i in range(9)}, 413),         # too many fields
+    ({"blinded": [{"x": 1}]}, 422),                # nested objects
+    ({"h": {"x": "ab"}}, 422),
+    ({"h": None}, 422),
+])
+def test_relay_bounds_round_payloads(rc, payload, code):
+    sid = _accepted(rc)
+    assert _post(rc, sid, 0, "initiator", payload).status_code == code
+    assert relay.SESSIONS[sid]["rounds"] == {} and relay.SESSIONS[sid]["log"] == []
+
+
+def test_relay_rejects_oversized_body(rc):
+    sid = _accepted(rc)
+    big = json.dumps({"role": "initiator", "payload": {"h": "a" * 20_000}})
+    r = rc.post(f"/sessions/{sid}/round/0", content=big,
+                headers={"Content-Type": "application/json"})
+    assert r.status_code == 413 and relay.SESSIONS[sid]["rounds"] == {}
+
+
+def test_relay_caps_live_sessions(rc, monkeypatch):
+    monkeypatch.setattr(relay, "MAX_SESSIONS", 2)
+    assert rc.post("/sessions", json={"mode": "count"}).status_code == 200
+    assert rc.post("/sessions", json={"mode": "count"}).status_code == 200
+    assert rc.post("/sessions", json={"mode": "count"}).status_code == 503
 
 
 def test_relay_sessions_expire_after_24h(rc):
@@ -292,14 +329,34 @@ def test_seen_shows_only_prefixes_and_counts(var):
     seen, sid = asyncio.run(go())
     parties = {p["party"]: p["items"] for p in seen["parties"]}
     assert set(parties) == {"me", "partner", "relay", "agent"}
-    assert len(parties["relay"]) == 6 and len(relay_log(sid)) == 6
+    assert len(relay_log(sid)) == 6
+    # 6 round entries plus 5 signed-metadata items for each side's round 1.
+    assert len(parties["relay"]) == 6 + 2 * 5
 
     def ok(v):
         return isinstance(v, int) or (isinstance(v, str) and HEX8.match(v)) or (
             isinstance(v, list) and all(isinstance(x, str) and HEX8.match(x) for x in v))
+
+    def meta_ok(item):
+        # Plain person ID and issue time are what the parties really receive.
+        if item["label"].startswith("person ID"):
+            return item["value"] in ("alex", "sam")
+        if item["label"].startswith("issue time"):
+            return re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", item["value"])
+        return ok(item["value"])
     for party in ("partner", "relay"):
-        assert parties[party] and all(ok(i["value"]) for i in parties[party]), party
-    assert all(ok(i["value"]) for i in parties["me"] if i["label"] != "result")
+        assert parties[party] and all(meta_ok(i) for i in parties[party]), party
+    assert all(meta_ok(i) for i in parties["me"] if i["label"] != "result")
+    # Every party view names the signed metadata, not just the points.
+    for party, who in (("partner", "from you"), ("me", "from your partner")):
+        labels = {i["label"] for i in parties[party]}
+        assert {f"{lbl} {who}" for lbl in ("person ID", "carrier count", "lab signature",
+                                           "credential commitment")} <= labels, party
+    assert {"person ID from initiator", "person ID from joiner"} <= {
+        i["label"] for i in parties["relay"]}
+    # No full hashes or signatures anywhere in the panel.
+    blob = json.dumps(seen)
+    assert not re.search(r"[0-9a-f]{16,}", blob)
     assert parties["agent"] == []  # no counselor installed: nothing sent to the agent
 
 
@@ -379,6 +436,8 @@ def test_nothing_sent_before_accept(var):
         return j, st_a, st_b, s["session_id"]
     j, st_a, st_b, sid = asyncio.run(go())
     assert j["mode"] == "count" and "how many" in j["mode_text"]
+    # Consent text discloses that each side learns the other's total carrier count.
+    assert "in total" in j["mode_text"]
     assert (st_a, st_b) == ("waiting_for_partner", "awaiting_accept")
     assert relay_log(sid) == [] and relay.SESSIONS[sid]["rounds"] == {}
 
@@ -444,6 +503,27 @@ def test_relay_unavailable(var):
         return await w.post("/check/start", json={"mode": "count"})
     r = asyncio.run(go())
     assert r.status_code == 400 and r.json()["error"]["code"] == "RELAY_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("status", [403, 409, 422])
+def test_start_reports_relay_refusal(var, status):
+    refusing = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda req: httpx.Response(status, json={})),
+        base_url="http://relay")
+
+    async def go():
+        w = wallet_client("alex", refusing)
+        return await w.post("/check/start", json={"mode": "count"}), \
+            (await w.get("/check/status")).json()["state"]
+    r, state = asyncio.run(go())
+    assert r.status_code == 400 and r.json()["error"]["code"] == "RELAY_UNAVAILABLE"
+    assert state == "idle"
+
+
+def test_mode_text_discloses_carrier_count():
+    from wallet.service import MODE_TEXT
+    for text in MODE_TEXT.values():
+        assert "how many carrier genes the other person has in total" in text
 
 
 def test_accept_without_join_is_refused(var):

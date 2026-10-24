@@ -142,9 +142,10 @@ Wallet call sequence (P2): `s = Session(...)`; post `s.round0()` to round 0; whe
 - `POST /sessions/{id}/accept`, `POST /sessions/{id}/decline`, `POST /sessions/{id}/fail {role}`
 - `GET /sessions/{id}/state -> {state, mode}`, where state is `waiting | joined | accepted | declined | failed | expired | done`.
 - `POST /sessions/{id}/round/{n} {role, payload}` with `n` in 0–2 and role `initiator | joiner`. Rounds are refused before `accepted`.
-- `GET /sessions/{id}/round/{n}?role=` returns the peer's payload when releasable, else 204. Release rules: round 0 only once both commitments are in; round 1 only once both commitments are in and the peer posted round 1; round 2 once the peer posted it. Returns 409 once the session is `failed` or `declined`.
-- `GET /sessions/{id}/log -> [{t, role, round, kind, prefixes: [8-hex]}]`
+- `GET /sessions/{id}/round/{n}?role=` returns the peer's payload when releasable, else 204. Release rules: round 0 only once both commitments are in; round 1 only once both commitments are in and the peer posted round 1; round 2 only once **both** sides posted round 2, so neither can read the other's double-blinded points first and copy or reorder them. Returns 409 once the session is `failed` or `declined`.
+- `GET /sessions/{id}/log -> [{t, role, round, kind, prefixes: [8-hex], meta?}]`. Round-1 entries add `meta = {person_id, count, issued_at, commitment: 8-hex, lab_sig: 8-hex}`, the signed metadata the relay also receives (Req 7.1).
 - Sessions and their data are deleted 24 hours after creation.
+- Resource caps: request bodies over 16 KB return 413; round payloads may have at most 8 fields, each an int, a string of at most 256 characters, or a list of at most `MAX_SET` such strings (413 or 422 otherwise); at most 10,000 live sessions (503 when full).
 
 ### wallet/service.py (ports 8101 and 8102)
 Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the relay every 500 ms while a check is active. Calls the counselor in-process once a result exists, and sets `state` to `done` only after the explanation (or its failure) is recorded.
@@ -156,7 +157,7 @@ Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the
 |---|---|---|
 | `GET /me` | | `{person_id, genes, count, claims: [{gene, finding}]}` |
 | `POST /check/start` | `{mode}` | `{session_id, invite_code}` |
-| `POST /check/join` | `{invite_code}` | `{session_id, mode, mode_text}` (plain-language description of the mode) |
+| `POST /check/join` | `{invite_code}` | `{session_id, mode, mode_text}` (plain-language description of the mode; in both modes it also states that each partner learns the other's total carrier count) |
 | `POST /check/accept`, `POST /check/decline` | | `{ok}` |
 | `GET /check/status` | | `{state, mode, round, result, explanation, error}` |
 | `GET /check/seen` | | `{parties: [{party, items: [{label, value}]}]}` |
@@ -164,6 +165,7 @@ Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the
 | `POST /present` | `{request_id, approve}` | `{status, reason}` |
 
 - `state` is `idle | waiting_for_partner | awaiting_accept | running | done | failed | declined`. `round` is 0–2 or null. `result` is a `Result` or null, `explanation` an `Explanation` or null, `error` `{code, user_message}` or null.
+- `/check/seen` lists, for this user, the partner, and the relay, the round-1 signed metadata as well as the points: person ID, carrier count, and issue time as sent, and the credential commitment and lab signature as 8-hex prefixes. Relay values come from the relay log and are untrusted; the UI renders them as text.
 - `/check/seen` parties are this user, the partner, `relay`, `agent`, and `trial`. The wallet builds it from what it sent (which is what the partner received), what it received, the relay log, the exact counselor input, and the presentations it sent. Points are 8-character hex prefixes; counts are numbers.
 
 ### Trial request flow (no CORS needed)
@@ -244,7 +246,7 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 |---|---|---|
 | Relay (honest-but-curious) | Learn genes or result? | Sees only blinded points; scalars never leave wallets; result computed locally. |
 | Relay (active) | Swap, reflect, or replay messages? | Partially mitigated. Round-0 commitments bind session ID, mode, and role, so reflection, cross-session splicing or replay, and a mode split abort with `COMMITMENT_MISMATCH`; lab signatures cover metadata. **Round 2 is unauthenticated, so the relay alone can fake either result.** Valid but wrong points force a false "no match". Echoing a wallet's own round 2 back to it forces a false match on up to min(counts) genes, because the relay holds both round-2 messages. Needs DLEQ proofs (S1b). |
-| Partner (malicious) | Fake a match or a different result? | **Not prevented.** Whoever posts round 2 second has seen the other's points and can copy or replace them, so the two outputs may differ. In Detail mode the partner knows which of my slots match and can reorder its round 2, so I name the wrong gene. Fairness and round-2 integrity need DLEQ proofs. The UI must not present a result as guaranteed. |
+| Partner (malicious) | Fake a match or a different result? | **Partially mitigated.** With an honest relay, round 2 is released only after both sides post it, so a partner cannot copy my round 2 back (false match) or learn which of my slots match before choosing its own round 2 (targeted gene relabeling). A partner can still send wrong or blindly reordered points, forcing a false "no match" or random wrong genes, and can abort after learning the result (fairness). Full round-2 integrity needs DLEQ proofs. The UI must not present a result as guaranteed. |
 | Partner (malicious) | Probe all panel genes? | Needs lab tokens (requires `k_lab`); signed count caps set size. |
 | Partner | Invent a carrier gene? | Cannot create a valid token without `k_lab`. |
 | Partner | Adapt input after seeing mine? | Commit-then-reveal. |

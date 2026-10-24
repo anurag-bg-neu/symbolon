@@ -13,11 +13,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Path, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from core.models import Mode, Role
+from core.models import MAX_SET, Mode, Role
 
 TTL = 24 * 3600
+# Resource caps. An honest round-1 payload at MAX_SET points is about 2 KB.
+MAX_BODY = 16 * 1024          # bytes per request
+MAX_SESSIONS = 10_000         # live sessions in memory
+MAX_KEYS = 8                  # top-level keys per round payload
+MAX_STR = 256                 # characters per string value
 CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 KINDS = {0: "commitment", 1: "blinded_set", 2: "double_blinded"}
 PEER = {"initiator": "joiner", "joiner": "initiator"}
@@ -26,6 +32,41 @@ SESSIONS: dict[str, dict[str, Any]] = {}
 CODES: dict[str, str] = {}  # invite code -> session_id
 
 app = FastAPI(title="GeneMatch relay")
+
+
+@app.middleware("http")
+async def limit_body(request, call_next):
+    """Refuse oversized bodies before they are read (cheap denial of service)."""
+    length = request.headers.get("content-length")
+    if length is not None and (not length.isdigit() or int(length) > MAX_BODY):
+        return JSONResponse({"detail": "request body too large"}, status_code=413)
+    return await call_next(request)
+
+
+def _check_payload(payload: dict[str, Any]) -> None:
+    """Bound the shape of an opaque round payload: strings, ints, or short string lists.
+
+    The relay still never interprets the content; this only caps what it stores.
+    Requests without Content-Length (chunked) are bounded by these caps instead.
+    """
+    if len(payload) > MAX_KEYS:
+        raise HTTPException(413, "too many fields")
+    for value in payload.values():
+        if isinstance(value, bool) or value is None:
+            raise HTTPException(422, "unsupported value")
+        if isinstance(value, int):
+            continue
+        if isinstance(value, str):
+            if len(value) > MAX_STR:
+                raise HTTPException(413, "string too long")
+            continue
+        if isinstance(value, list):
+            if len(value) > MAX_SET:
+                raise HTTPException(413, f"more than {MAX_SET} items")
+            if not all(isinstance(v, str) and len(v) <= MAX_STR for v in value):
+                raise HTTPException(422, "list items must be short strings")
+            continue
+        raise HTTPException(422, "unsupported value")
 
 
 class CreateBody(BaseModel):
@@ -74,9 +115,27 @@ def _prefixes(payload: dict[str, Any]) -> list[str]:
     return out
 
 
+def _meta(payload: dict[str, Any]) -> dict[str, Any]:
+    """The signed round-1 metadata the relay also receives, for the transparency panel.
+
+    person_id, count, and issued_at are shown as-is (the relay really sees them);
+    the commitment and lab signature are shown as 8-hex prefixes.
+    """
+    meta: dict[str, Any] = {}
+    for key in ("person_id", "count", "issued_at"):
+        if isinstance(payload.get(key), (str, int)) and not isinstance(payload.get(key), bool):
+            meta[key] = payload[key]
+    for key in ("commitment", "lab_sig"):
+        if isinstance(payload.get(key), str):
+            meta[key] = payload[key][:8]
+    return meta
+
+
 @app.post("/sessions")
 def create(body: CreateBody) -> dict:
     _sweep()
+    if len(SESSIONS) >= MAX_SESSIONS:
+        raise HTTPException(503, "relay is full, try again later")
     sid = secrets.token_hex(16)
     code = "".join(secrets.choice(CROCKFORD) for _ in range(8))
     while code in CODES:
@@ -129,12 +188,16 @@ def post_round(body: RoundBody, sid: str, n: int = Path(ge=0, le=2)) -> dict:
         raise HTTPException(409, "round already posted")
     if n > 0 and (n - 1, body.role) not in rounds:
         raise HTTPException(409, "previous round missing")
+    _check_payload(body.payload)
     rounds[(n, body.role)] = body.payload
-    sess["log"].append({
+    entry = {
         "t": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "role": body.role, "round": n, "kind": KINDS[n],
         "prefixes": _prefixes(body.payload),
-    })
+    }
+    if n == 1:
+        entry["meta"] = _meta(body.payload)
+    sess["log"].append(entry)
     if (2, "initiator") in rounds and (2, "joiner") in rounds:
         sess["state"] = "done"
     return {"ok": True}
@@ -148,7 +211,12 @@ def get_round(sid: str, role: Role, n: int = Path(ge=0, le=2)):
     rounds = sess["rounds"]
     peer = PEER[role]
     both_committed = (0, "initiator") in rounds and (0, "joiner") in rounds
-    releasable = (n, peer) in rounds and (n == 2 or both_committed)
+    if n == 2:
+        # Round 2 is released only once both sides have posted it, so neither can
+        # read the other's double-blinded points first and copy or reorder them.
+        releasable = (2, "initiator") in rounds and (2, "joiner") in rounds
+    else:
+        releasable = (n, peer) in rounds and both_committed
     if not releasable:
         return Response(status_code=204)
     return rounds[(n, peer)]
