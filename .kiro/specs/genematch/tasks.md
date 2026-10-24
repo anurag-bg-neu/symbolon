@@ -58,7 +58,7 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: 1.1, 1.4, 3.4, 5.1, 5.2, 5.4, 5.5, 5.6_
 
 - [x] 2. Gene panel and lab service
-  - [x] 2.1 **P3** (built by P1; 12 genes, every MedlinePlus page confirmed), 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
+  - [x] 2.1 **P3** (30 genes, every MedlinePlus page and AR inheritance statement confirmed), 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
     - _Requirements: 1.3, 6.1_
   - [x] 2.2 **P1**: `core/issuance.py` (`issue`, with panel, AR, duplicate, `MAX_SET`, and `CLAIM_GENES` checks, and the `salt_commitment` flag). **P2**, 13:15–13:45: `lab/keys.py` (`load_or_create`) and `lab/service.py` (`POST /credentials`, `GET /pubkey`), reading `GENEMATCH_COMMIT_SALT` and passing it to `issue`
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
