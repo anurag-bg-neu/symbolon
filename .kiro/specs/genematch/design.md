@@ -45,6 +45,19 @@ Notation is additive (ristretto255). `H(g) = ristretto255_from_hash(SHA-512("gen
 
 Both parties learn the same output because the intersection is symmetric and both rounds use the same mode.
 
+## Correctness properties
+
+The crypto core is checked with Hypothesis against the following requirement-linked properties. P6 concerns fresh blinded **point values** on the wire; it does not claim full transcript unlinkability because round 1 deliberately reuses signed credential metadata, as documented under Threat model.
+
+| ID | Property | Requirements verified |
+|---|---|---|
+| **P1 Correctness** | For any two generated subsets `A` and `B` of the autosomal-recessive gene panel, an honest PSI run reports exactly `A ∩ B`: Detail mode returns the shared genes and Count mode returns exactly their count, never more or less. Both parties receive the same result. | 3.4, 5.5, 5.6 |
+| **P2 Commutativity** | For random non-zero canonical scalars `a`, `b` and a random panel gene `g`, `a·(b·H(g)) == b·(a·H(g))`. | 5.5, 5.6 |
+| **P3 Order independence** | Shuffling either party's input genes before issuance never changes the PSI result in either mode. | 5.5, 5.6 |
+| **P4 Validation** | Every generated 32-byte string that is not a valid ristretto255 encoding is rejected, and the identity is always rejected. | 5.4 |
+| **P5 Key separation** | For any panel gene, tokens issued under two distinct non-zero lab keys do not match. | 1.1, 1.4 |
+| **P6 Unlinkability** | Two runs over the same non-empty input, using distinct fresh session scalars, produce different blinded point values in their round-1 wire messages. | 5.1, 5.2 |
+
 ### Why lab tokens (the small-domain attack)
 
 The panel has fewer than 100 genes. With plain DH-PSI on `H(g)`, a malicious partner could put every panel gene into their own set and learn the other person's entire carrier list. Lab tokens block this: computing `T_g` requires `k_lab`, so a partner can only include tokens the lab issued to them, and the signed count caps how many. This is a lightweight version of authorized PSI (Baldi et al., CCS 2011; De Cristofaro and Tsudik).
@@ -81,13 +94,19 @@ sequenceDiagram
 | Item | Location | Notes |
 |---|---|---|
 | Lab keys | `var/lab_keys.json` = `{"k_lab": hex, "ed25519_seed": hex}` | `lab.keys.load_or_create()` creates the file on first use and reuses it afterwards, so seeded credentials stay valid across restarts. Demo only. `var/` is gitignored. |
-| Wallet files | `var/wallets/<person_id>.json` = `{"person_id", "genes", "credential", "claims", "holder_seed", "lab_pubkey"}` | Written by `seed_demo.py`, read by the wallet at startup. `genes` is shown only on the owner's home screen and is never sent anywhere. `genes` must be in the same (sorted) order as `credential.tokens`. `credential` is the full `Credential.model_dump()`, including `commit_salt`. |
+| Carrier panel | `data/panel.json` | 30–60 curated autosomal-recessive gene-condition entries. Each entry has a plain-language summary and a confirmed MedlinePlus Genetics condition page. BRCA1/BRCA2 trial findings are intentionally separate. |
+| Synthetic genome definitions | `data/synthetic_genomes/{assembly,alex,sam}.json` | Compact, deterministic definitions of complete two-haplotype synthetic sequences. They are demo fixtures, not real people, clinical variants, or copies of a reference genome. Materialized FASTA would contain about 6.18 billion bases per sample and belongs under gitignored `var/`, never Git. |
+| Wallet files | `var/wallets/<person_id>.json` = `{"person_id", "genes", "credential", "claims", "holder_seed", "lab_pubkey"}` | Written by `seed_demo.py`, read by the wallet at startup. `genes` is shown only on the owner's home screen and is never sent anywhere. `genes` must be in the same (sorted) order as `credential.tokens`. `credential` is the full `Credential.model_dump()`, including `commit_salt`. Whole-genome definitions and bases are never copied into wallet files. |
 | Commitment salt flag | env `GENEMATCH_COMMIT_SALT` (`1` default, `0` to turn off) | Read by the lab service and seed script and passed to `issue(..., salt_commitment=...)`. `core/` reads no environment variables. |
 | Wallet identity | env `GENEMATCH_PERSON` (for example `alex`), `GENEMATCH_RELAY` (default `http://localhost:8000`), `GENEMATCH_TRIAL` (default `http://localhost:8300`) | Partner A always runs on 8101 and partner B on 8102. |
 | Couple choice | `COUPLE=1\|2\|3 ./scripts/run_demo.sh` (default 1) | Starts the wallets for that couple. |
 | Counselor | env `BEDROCK_MODEL_ID` (a Claude model enabled in the team's AWS account), `AWS_REGION` (default `us-east-1`) | If `BEDROCK_MODEL_ID` is unset, the template is used. |
 
 **Seeding.** `scripts/seed_demo.py` runs in-process (no HTTP): it loads the lab keys, generates a holder key per person, calls `core.issuance.issue(...)`, and writes the wallet files. In the demo, the seed script generates the holder key on the wallet's behalf and writes it only to that wallet's file; the lab sees only the public key.
+
+**Synthetic whole-genome fixtures.** Alex and Sam each have a complete, reconstructible sequence definition rather than a committed multi-gigabyte FASTA. `assembly.json` declares the GRCh38.p14 primary-contig lengths only (accession `GCF_000001405.40`) and two synthetic haplotypes for every declared contig; no reference bases or real-person variants are copied. For one-based position `p`, generator `sha256-counter-2bit-v1` hashes the UTF-8 domain `genematch/v1/synthetic-genome/`, the sample's 32-byte public fixture seed, the UTF-8 contig name followed by a zero byte, the one-byte haplotype number (1 or 2), and the unsigned eight-byte big-endian block index `(p - 1) // 128`. Reading each digest byte from most-significant to least-significant two-bit pair with `00=A`, `01=C`, `10=G`, `11=T` yields 128 bases; base `(p - 1) % 128` selects the requested base. This defines 6,176,572,802 bases per sample across two haplotypes and is deterministic across platforms.
+
+The sample files also contain simulated lab interpretations used to construct the existing demo credentials. These labels are not inferred from the generated bases and do not identify real clinical variants: Alex has carrier labels for CFTR, GBA, and PAH plus the separate BRCA1 trial finding; Sam has carrier labels for CFTR and HEXA. Only these reviewed labels enter issuance. Seeds, contig data, and genome bases never enter credentials, PSI messages, logs, counselor input, or trial presentations. Materializing a FASTA is optional development work and must write beneath gitignored `var/`.
 
 **Demo people** (all synthetic):
 
@@ -133,27 +152,31 @@ Wallet call sequence (P2): `s = Session(...)`; post `s.round0()` to round 0; whe
 - `select_claim(claims, gene, finding) -> SignedClaim` returns exactly one matching claim or raises `NO_MATCHING_CLAIM`.
 
 ### lab/service.py (port 8200)
-- `POST /credentials {person_id, genes[], findings[], holder_pubkey} -> {credential, claims}`
+- `POST /credentials {person_id, genes[], findings[], holder_pubkey} -> {credential, claims}`. Returns 403 unless `GENEMATCH_LAB_OPEN=1`. It is unauthenticated, and an open endpoint lets anyone mint tokens for any genes and probe a partner for them, which defeats the point of lab tokens. The seed script issues in-process and does not need it. Never enable it on a deployed service.
 - `GET /pubkey -> {ed25519_pubkey}`
 
 ### relay/service.py (port 8000, in-memory store)
-- `POST /sessions {mode} -> {session_id, invite_code}`. `session_id` is `secrets.token_hex(16)`; `invite_code` is 8 characters of Crockford base32 from `secrets`, single-use.
-- `POST /sessions/join {invite_code} -> {session_id, mode}`. A second join returns 409.
+- `POST /sessions {mode, inviter_name?} -> {session_id, invite_code}`. `session_id` is `secrets.token_hex(16)`; `invite_code` is 8 characters of Crockford base32 from `secrets`, single-use.
+- `POST /sessions/join {invite_code} -> {session_id, mode, inviter_name}`. A second join returns 409.
 - `POST /sessions/{id}/accept`, `POST /sessions/{id}/decline`, `POST /sessions/{id}/fail {role}`
 - `GET /sessions/{id}/state -> {state, mode}`, where state is `waiting | joined | accepted | declined | failed | expired | done`.
 - `POST /sessions/{id}/round/{n} {role, payload}` with `n` in 0–2 and role `initiator | joiner`. Rounds are refused before `accepted`.
-- `GET /sessions/{id}/round/{n}?role=` returns the peer's payload when releasable, else 204. Release rules: round 0 only once both commitments are in; round 1 only once both commitments are in and the peer posted round 1; round 2 once the peer posted it.
-- `GET /sessions/{id}/log -> [{t, role, round, kind, prefixes: [8-hex]}]`
+- `GET /sessions/{id}/round/{n}?role=` returns the peer's payload when releasable, else 204. Release rules: round 0 only once both commitments are in; round 1 only once both commitments are in and the peer posted round 1; round 2 only once **both** sides posted round 2, so neither can read the other's double-blinded points first and copy or reorder them. Returns 409 once the session is `failed` or `declined`.
+- `GET /sessions/{id}/log -> [{t, role, round, kind, prefixes: [8-hex], meta?}]`. Round-1 entries add `meta = {person_id, count, issued_at, commitment: 8-hex, lab_sig: 8-hex}`, the signed metadata the relay also receives (Req 7.1).
 - Sessions and their data are deleted 24 hours after creation.
+- Resource caps: request bodies over 16 KB return 413; round payloads may have at most 8 fields, each an int, a string of at most 256 characters, or a list of at most `MAX_SET` such strings (413 or 422 otherwise); at most 10,000 live sessions (503 when full).
 
 ### wallet/service.py (ports 8101 and 8102)
-Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the relay every 500 ms while a check is active. Calls the counselor in-process once a result exists.
+Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the relay every 500 ms while a check is active. Calls the counselor in-process once a result exists, and sets `state` to `done` only after the explanation (or its failure) is recorded.
+
+- CSRF guard: POST requests are refused with 403 `FORBIDDEN_ORIGIN` if they carry an `Origin` other than the wallet's own, or `Sec-Fetch-Site: cross-site`. Browsers send cross-site form and `text/plain` posts without CORS preflight, so without this any web page could accept a check on the user's behalf (Req 3.2). The wallet UI must call its own backend from its own origin.
+- When the relay reports `failed`, the wallet shows `PEER_FAILED`. On any abort, including unexpected errors, it posts `/fail` so the partner stops waiting. Unexpected errors are logged by type name only.
 
 | Endpoint | Request | Response |
 |---|---|---|
 | `GET /me` | | `{person_id, genes, count, claims: [{gene, finding}]}` |
 | `POST /check/start` | `{mode}` | `{session_id, invite_code}` |
-| `POST /check/join` | `{invite_code}` | `{session_id, mode, mode_text}` (plain-language description of the mode) |
+| `POST /check/join` | `{invite_code}` | `{session_id, mode, mode_text}` (plain-language description of the mode; in both modes it also states that each partner learns the other's total carrier count) |
 | `POST /check/accept`, `POST /check/decline` | | `{ok}` |
 | `GET /check/status` | | `{state, mode, round, result, explanation, error}` |
 | `GET /check/seen` | | `{parties: [{party, items: [{label, value}]}]}` |
@@ -161,6 +184,7 @@ Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the
 | `POST /present` | `{request_id, approve}` | `{status, reason}` |
 
 - `state` is `idle | waiting_for_partner | awaiting_accept | running | done | failed | declined`. `round` is 0–2 or null. `result` is a `Result` or null, `explanation` an `Explanation` or null, `error` `{code, user_message}` or null.
+- `/check/seen` lists, for this user, the partner, and the relay, the round-1 signed metadata as well as the points: person ID, carrier count, and issue time as sent, and the credential commitment and lab signature as 8-hex prefixes. Relay values come from the relay log and are untrusted; the UI renders them as text.
 - `/check/seen` parties are this user, the partner, `relay`, `agent`, and `trial`. The wallet builds it from what it sent (which is what the partner received), what it received, the relay log, the exact counselor input, and the presentations it sent. Points are 8-character hex prefixes; counts are numbers.
 
 ### Trial request flow (no CORS needed)
@@ -173,8 +197,49 @@ Serves the UI. Holds the wallet file and the live `Session` in memory. Polls the
 - `explain(result: Result, panel: Panel) -> Explanation`
 - Input in Count mode: `{shared_count}`. Input in Detail mode: `{shared: [panel entries]}`.
 - `build_prompt(...)` is a separate function so tests can assert the Count-mode prompt contains no gene or condition names.
-- Bedrock adapter uses the Converse API through `boto3`, with a strict system prompt ("use only the provided facts; do not diagnose; always refer to a genetic counselor") and a 10-second timeout.
-- Falls back to the deterministic template when `BEDROCK_MODEL_ID` is unset, the call raises or times out, or the output fails validation (missing the 25% statement when genes are shared, missing the counselor referral, or fewer than 3 or more than 5 questions).
+- **Current build: template only.** `explain()` returns the deterministic template (`source: "template"`). No LLM or AWS code exists. `counselor.py` has a marked `LLM HOOK` (`_llm_explain`, returning None) where a model call can be added later; `explain()` already validates any LLM output (`valid()`: 25% statement and "options" when genes are shared, "not zero" and "not tested" when none are, a counselor referral, 3–5 questions, a disclaimer) and falls back to the template on failure.
+- **Optional feature.** Deleting `agent/` makes the wallet return `explanation: null`; the UI's counselor code lives only in `wallet/static/counselor.js`, loaded by one removable `<script>` tag. The required safety text (25% risk, options exist, see a genetic counselor, lower-not-zero, not a diagnosis) is static in `app.js`, so it stays when the counselor is removed. A test runs a full check with the counselor removed.
+
+### Wallet UI (`wallet/static/`, plain HTML/CSS/JS)
+- Pages: `/` public landing (`wallet/static/index.html`), `/signin` (`wallet/static/signin.html`), `/app` protected (`wallet/pages/app.html`, outside the static mount so it can't be fetched without a session). Static JS/CSS is public and holds no data.
+- Screens inside `/app`: home (synthetic-data label, own genes "visible only to you", trial findings, Connect your lab, Add your lab file), onboarding when the wallet is empty, start, join with consent, running, result, failed, declined, trial approval (`#present=<id>`), lab-file confirm.
+- Plain language only on default screens (Req 10). Steps: "Sealing your list" (round 0), "Exchanging scrambled lists" (round 1), "Comparing" (round 2); status "Checking privately…" and "Done".
+- Result screen: the answer, a line restating the agreed mode, the static safety text, the optional counselor block, and a "Privacy details" card (`privacy.js`) with three plain lines built from `/check/seen` (N = the round-1 count this wallet sent), then a nested `<details>` "Show technical details", closed by default, holding "What did everyone see?" (cards for You, Your partner, Relay server, plus Counselor and Trial site when they have items). Technical terms are allowed only inside that toggle. Calm neutral colours only.
+- Invites: the code is shown grouped as `XXXX-XXXX` ("Send this code to your partner: 7K4Q-9PXA"); the join field and the wallet accept it with or without the dash and in any case. The consent line is "<Name> invited you to a private check (<Mode> mode). You'll also see each other's total carrier count. Accept?". On the start screen each option is a whole-box `<label>` with the mode name and a few-word description ("How many genes you share" / "Which genes you share"), the selected box highlighted, and one short line noting that both see each other's total carrier count. Mode explanations sit in a "What does this mean?" `<details>` on the invite and consent screens only.
+- Navigation: a slim top nav in the app header (Home, Start a check, Join a check; the last two only when the wallet has results), with the current screen marked `aria-current="page"`. Every screen change scrolls to the top and moves focus to the heading without jumping. The result screen offers "Start another check" (primary) and "Home". `POST /sessions` takes an optional `inviter_name` (at most 40 characters, whitespace collapsed); `POST /sessions/join` returns it; the wallet passes it through `/check/join` as `inviter_name`. The relay could lie about it, so it is only a label, rendered with `textContent`.
+- Trial links from the verifier (`/#present=<id>`) are forwarded by the landing page to `/app#present=<id>`; the fragment survives the sign-in redirect and the sign-in page returns to it.
+- Polling: every 3 s while waiting for the partner (no timeout, since joining may happen later); every 500 ms while running, with a 60 s timeout and a plain message; stops on `done`, `failed`, `declined`; pauses while the tab is hidden; after 3 network failures it stops and says the wallet can't be reached.
+- Trial approval names the requester and the finding ("<trial> is asking to verify your <gene> <finding> finding"), lists what will and won't be shared, and notes that sharing the same finding with two trials is linkable.
+- All server values are rendered with `textContent`; tests check there are no HTML-injection sinks.
+
+### Demo accounts and sessions (`wallet/auth.py`)
+- One person per wallet port (decision 1a). `seed_demo.py` writes `var/accounts.json` = `{person_id: {email, display_name, port, salt, hash, n, r, p}}` with `hashlib.scrypt` (n=2^14, r=8, p=1, 16-byte salt from `secrets`). Demo emails are `<person>@genematch.demo` and demo passwords `demo-<person>`, shown on the sign-in page and labelled as demo. No genetic data is stored with accounts.
+- `POST /auth/signin {email, password}`: verifies with `hmac.compare_digest`. Wrong password and unknown email both return 401 `BAD_LOGIN`. Valid credentials for another person return 403 `WRONG_WALLET`: "This wallet belongs to Alex. Open Sam's wallet at localhost:8102." `POST /auth/demo` signs in as this wallet's person ("Continue as Alex"). `POST /auth/signout` deletes the session. `GET /auth/session -> {signed_in, person_id, display_name}`.
+- Sessions: `secrets.token_urlsafe(32)`, in memory per wallet process, 8-hour lifetime. Cookie `gm_session_<person>`: HttpOnly, SameSite=Lax, Path=/, no `Secure` (demo runs on http://localhost). Cookies on localhost ignore the port, so the per-wallet name keeps 8101 and 8102 from overwriting each other. The existing Origin check still guards every POST (SameSite does not separate ports).
+- Protected: `/me`, `/check/*`, `/present*`, `/onboard/*` return 401 `SIGNED_OUT` without a session; `/app` redirects (303) to `/signin`. Public: `/`, `/signin`, `/auth/*`, static assets.
+- Demo-grade only: no rate limiting, no account lockout, in-memory sessions.
+
+### Onboarding: Connect your lab and lab files
+- **Empty wallets.** A wallet file may have `credential: null` (written by `seed_demo.py --empty <person>`). `/me` then returns `has_results: false` and `/check/start` and `/check/join` refuse with `NO_RESULTS`. The pinned `lab_pubkey` is always written by the seed script, never taken from an uploaded file.
+- **Lab records.** `data/lab_records.json` = `{person_id: {display_name, genes, findings}}` holds the demo lab's synthetic results. `seed_demo.py` and the lab's Connect flow both issue from it.
+- **Lab file format** (`core/labfile.py`): `{format: "genematch-lab-file/v1", synthetic: true, person_id, display_name, genes, credential, genes_sig}`. `genes_sig` is an Ed25519 lab signature with the new prefix `b"genematch/v1/lab-file/"` over `canon({format, person_id, display_name, genes, count, commitment, issued_at})`. It binds the plain gene names to the credential's commitment, so a tampered gene list is detected (the credential signature alone covers tokens, not names). No existing contract changes.
+- `verify_lab_file(doc, lab_pubkey, person_id)` checks, in order: format (`NOT_LAB_FILE`), schema (`MALFORMED_FILE`), credential lab signature (`NOT_SIGNED`: "This file isn't signed by the lab."), gene-list signature and `doc.person_id == credential.person_id` (`TAMPERED`: "This file was changed after the lab signed it."), person (`WRONG_PERSON`: "This file belongs to <display_name>."), then the `Session` owner-side check (`TAMPERED`). Raises `LabFileError(code, user_message)`.
+- `verify_connect_claims(claims, lab_pubkey, person_id, holder_pubkey)` checks every claim's lab signature, person, and holder key.
+- **Connect your lab.** Lab endpoints (always on, issue only from lab records):
+  - `POST /connect/requests {person_id, holder_pubkey, return_url, state} -> {request_id, consent_url, collect_token}`. `return_url` must be `http(s)://localhost|127.0.0.1:<port>/connect/callback` (allowed hosts configurable for tests); `state` is 32–128 URL-safe characters. Requests expire after 10 minutes, in memory.
+  - `GET /connect/{id}` is the lab's consent page (server-rendered, escaped, patient sign-in required): "Send your carrier results to your GeneMatch wallet?", the person's display name, how many results and findings, and a synthetic-data label. Send and Don't send are plain form posts.
+  - `POST /connect/{id}/approve` issues `{lab_file, claims}` with the wallet's holder public key, then 303 to `return_url?state=<state>&outcome=approved`. `POST /connect/{id}/decline` 303 to `return_url?state=<state>&outcome=declined`.
+  - `GET /connect/{id}/result` with header `X-Collect-Token` (compared in constant time; the token never appears in a URL) returns the issued result once, then deletes it; 202 while pending, 409 if declined, 404 otherwise.
+  - Wallet `POST /onboard/connect` generates a fresh holder seed and a one-time `state` (`secrets.token_urlsafe(32)`), stores `{request_id, collect_token, holder seed, session}` under that state for 10 minutes, and returns `{consent_url}`; the browser goes to the lab.
+  - Wallet `GET /connect/callback?state=&outcome=` (needs a wallet session; otherwise redirects to sign-in). The state must exist, be unused, unexpired, and belong to the same wallet session; it is consumed on first use. `outcome=declined` changes nothing. Otherwise the wallet collects the result server-side (the lab's answer wins over the URL's `outcome`), runs `verify_lab_file` and `verify_connect_claims`, and replaces the credential, genes, claims, and holder seed. It then 303s to `/app#results-added`, `/app#connect-declined`, or `/app#connect-error=<CODE>` with `<CODE>` from a fixed list: `STATE_INVALID`, `STATE_USED`, `NOT_APPROVED`, `LAB_UNAVAILABLE`, `TAMPERED`.
+- **Add your lab file.** Wallet `POST /onboard/upload` takes the raw file bytes (no multipart), at most 100 KB (413 `FILE_TOO_LARGE`). Non-JSON is checked for raw DNA formats (FASTQ `@`/`+` lines, VCF `##fileformat=VCF`, consumer exports with `rsid` columns, gzip) and rejected with `RAW_DNA`: results must come from a lab so nobody can fake them; other non-JSON gets `NOT_LAB_FILE`. A valid file is held as a pending replacement and the response `{pending_id, display_name, genes, count, replaces, current_count}` drives the "Replace your current results?" confirmation. `POST /onboard/upload/confirm {pending_id}` applies it (pending items expire after 10 minutes). Existing claims and holder seed are kept. Replacement is refused while a check is running or waiting.
+- **Lab portal identity.** The lab is presented as a separate organization in the same calm, Apple-inspired layout as the wallet (white header, generous spacing, rounded cards, pill buttons): "GeneMatch Demo Lab · Patient portal", its own logo mark, and accent colour deep violet `#4b2e83` (about 10:1 on white) used only for buttons, links, and the mark, distinct from the wallet's blue `#0a5c8a`. `/` is the portal home (sign-in, or the patient's results when signed in). Every lab page keeps the synthetic-data banner.
+- **Lab sign-in** (`lab/auth.py`, passwords via `core/passwords.py`, shared with the wallet). `seed_demo.py` writes `var/lab_accounts.json`: one patient account per synthetic person (`<person>@demolab.test` / `lab-<person>`) and one staff account (`staff@demolab.test` / `lab-staff`), scrypt-hashed. These are separate from wallet accounts. Cookie `gm_lab_session` (HttpOnly, SameSite=Lax, 8 hours, in memory). Every lab POST passes the wallet's Origin rule. `GET /signin?next=` and `POST /signin` (form); `next` must be `/connect/<id>`, `/my-results` or `/staff/records`, anything else falls back to `/my-results`. `POST /signout`. Demo credentials are printed on the lab sign-in page unless `GENEMATCH_SHOW_DEMO_LOGINS=0`.
+- **Connect consent requires the patient.** `GET /connect/{id}` redirects to sign-in when signed out. It shows the consent page only to the patient whose `person_id` the request names; another patient or a staff account gets a 403 page ("You're signed in to the lab as Sam. This wallet belongs to Alex.") with a sign-out button. `POST /connect/{id}/approve|decline` enforce the same rule (401 signed out, 403 otherwise). The lab issues only that person's own record. Creating a request stays open (the wallet calls it server-side), because nothing is released without the patient's lab sign-in.
+- **Download your results file** (patients): `GET /my-results` shows the signed-in patient's own synthetic record; `GET /my-results/file` returns a lab-signed carrier file for that record only. There is no way for a patient to choose genes.
+- **Patient records** (lab staff only): `GET /staff/records` lists each synthetic patient with AR gene checkboxes from `panel.json`; `POST /staff/records/{person}` validates with the `issue()` checks and saves to `var/lab_records.json`, an overlay on `data/lab_records.json` that `seed_demo.py` deletes so a reseed resets the demo. Findings are not editable there.
+- Script: `scripts/make_lab_file.py --person alex --genes CFTR,HBB --out alex.json [--name "Alex"]` is lab-side tooling. It signs with `var/lab_keys.json` directly, so running it is equivalent to being the lab.
+- Wallet `/me` adds `lab_portal` (env `GENEMATCH_LAB_PUBLIC`, default `http://localhost:8200`) so the upload screen can link to "Download your results file".
 
 ## Data models
 
@@ -225,11 +290,17 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 - **Salt:** 128 random bits from `secrets`; makes each claim's hash unguessable, so a claim hash revealed in one context cannot be matched against guesses.
 
 ### trial/service.py (port 8300)
-- `GET /` serves the verifier page. `GET /trials` lists `data/trials.json`.
-- `POST /requests {trial_id} -> TrialRequest`. Nonce is `secrets.token_hex(16)`.
-- `GET /requests/{id} -> {request, status, reason}`, where status is `pending | eligible | rejected`.
-- `POST /requests/{id}/present {presentation} -> {status, reason}`. Calls `core.claims.verify_presentation`, then marks the nonce used.
-- Nonces are single-use and expire after 5 minutes.
+- `GET /` serves the verifier page (a placeholder until `trial/static/index.html` exists). `GET /trials` lists `data/trials.json`, falling back to two built-in demo trials (BRCA1, BRCA2) if the file is missing. Only trials whose required gene is in `CLAIM_GENES` are listed.
+- `POST /requests {trial_id} -> TrialRequest`. `request_id` and nonce are `secrets.token_hex(16)`; `gene` and `finding` come from the trial's `required`; `expires_at` is 5 minutes after creation.
+- `GET /requests/{id} -> {request, status, code, reason, received}`, where status is `pending | eligible | rejected`, `code` is the `ProtocolError` code or null, `reason` is the plain-language message ("Eligible — verified by lab" when eligible), and `received` is `{claims: 0|1, gene, finding}` so the verifier page can show it received exactly one claim. A pending request past its expiry reads as `rejected` / `NONCE_EXPIRED`.
+- `POST /requests/{id}/present {presentation} -> {status, code, reason}`. Order: request must exist (404), nonce not already used (`NONCE_REUSED`), not expired (`NONCE_EXPIRED`), then `core.claims.verify_presentation`. The nonce is marked used on every attempt that reaches verification, valid or not, so each request accepts exactly one presentation.
+- Nonces are single-use and expire after 5 minutes. The request store is in memory.
+- The lab public key comes from `create_app(lab_pubkey=...)` in tests, else env `GENEMATCH_LAB_PUBKEY`, else `GET {GENEMATCH_LAB}/pubkey` (default `http://localhost:8200`), fetched once and cached. The trial service never reads the lab's key file.
+
+### Wallet presentation endpoints
+- `GET /present/pending?request_id=` validates `request_id` as 32 lowercase hex, fetches the request and trial name from `GENEMATCH_TRIAL` server-side, and returns `{request_id, trial_name, gene, finding, status, has_matching_claim}`.
+- `POST /present {request_id, approve}` re-fetches the request server-side (it never trusts nonce or trial ID from the browser). If `approve` is false it returns `{status: "declined"}` and sends nothing. Otherwise it picks exactly one claim with `select_claim`; if none matches it returns `{status: "no_matching_claim", reason}` and sends nothing. Else it signs with `holder_seed`, posts `{presentation}`, records what it sent for `/check/seen`, and returns the trial's `{status, code, reason}`.
+- `/check/seen` adds a `trial` party listing each presentation sent: trial ID, the single claim's gene and finding, "claims shared: 1", and the nonce as an 8-hex prefix.
 
 ### Limitations
 - The same claim shown to two verifiers is linkable, because it is the same signed object. Unlinkable presentation needs BBS+ signatures or a ZK proof; noted as future work.
@@ -240,8 +311,8 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 | Adversary | Can they... | Mitigation |
 |---|---|---|
 | Relay (honest-but-curious) | Learn genes or result? | Sees only blinded points; scalars never leave wallets; result computed locally. |
-| Relay (active) | Swap, reflect, or replay messages? | Partially mitigated. Round-0 commitments bind session ID, mode, and role, so reflection, cross-session splicing or replay, and a mode split abort with `COMMITMENT_MISMATCH`; lab signatures cover metadata. Round 2 is unauthenticated: valid but wrong points force a false "no match" (needs DLEQ proofs). |
-| Partner (malicious) | Fake a match or a different result? | **Not prevented.** Whoever posts round 2 second has seen the other's points and can copy or replace them, so the two outputs may differ. Fairness and round-2 integrity need DLEQ proofs. |
+| Relay (active) | Swap, reflect, or replay messages? | Partially mitigated. Round-0 commitments bind session ID, mode, and role, so reflection, cross-session splicing or replay, and a mode split abort with `COMMITMENT_MISMATCH`; lab signatures cover metadata. **Round 2 is unauthenticated, so the relay alone can fake either result.** Valid but wrong points force a false "no match". Echoing a wallet's own round 2 back to it forces a false match on up to min(counts) genes, because the relay holds both round-2 messages. Needs DLEQ proofs (S1b). |
+| Partner (malicious) | Fake a match or a different result? | **Partially mitigated.** With an honest relay, round 2 is released only after both sides post it, so a partner cannot copy my round 2 back (false match) or learn which of my slots match before choosing its own round 2 (targeted gene relabeling). A partner can still send wrong or blindly reordered points, forcing a false "no match" or random wrong genes, and can abort after learning the result (fairness). Full round-2 integrity needs DLEQ proofs. The UI must not present a result as guaranteed. |
 | Partner (malicious) | Probe all panel genes? | Needs lab tokens (requires `k_lab`); signed count caps set size. |
 | Partner | Invent a carrier gene? | Cannot create a valid token without `k_lab`. |
 | Partner | Adapt input after seeing mine? | Commit-then-reveal. |
@@ -249,6 +320,9 @@ No zero-knowledge proof is needed: the lab signs each finding separately, so a p
 | Trial verifier | See my other results? | Receives exactly one signed claim; never sees tokens or other claims. |
 | Someone with a copied claim | Present it as their own? | Holder signature over a fresh nonce is required. |
 | AI agent / LLM provider | Learn genetic data? | In Count mode it receives only a number; in Detail mode it receives only what both partners already learned. |
+| A patient | Mint tokens for genes they don't carry (to probe a partner)? | Patients can't choose genes: lab files and Connect issue only the lab's own record. Editing records needs a lab staff account; the lab is trusted to set real results. `POST /credentials` stays off unless `GENEMATCH_LAB_OPEN=1`. |
+| Anyone who can reach the demo lab | Release someone else's results via Connect? | The consent page and approval require that patient's lab sign-in; another patient or staff is refused. Residual: demo passwords are published on the lab sign-in page for the demo (hide with `GENEMATCH_SHOW_DEMO_LOGINS=0`); no rate limiting or lockout. |
+| A web page in the same browser | Use the wallet's session? | Origin check on every POST, HttpOnly cookies, per-wallet cookie names. |
 
 Residual risks, stated plainly in the README:
 - Tokens are deterministic per gene, so two people holding the same gene hold the same token (fine inside wallets, but tokens must never leave them).
@@ -259,6 +333,23 @@ Residual risks, stated plainly in the README:
 - Scalar zeroing is best-effort in Python.
 - A compromised lab key breaks everything; the design is not post-quantum.
 
+## Development safeguards
+
+AI-assisted changes receive an additional cryptographic review because a plausible "simplification" can quietly remove a security property. For example, changing PSI to operate on raw `H(g)` values instead of lab-authorized `T_g = k_lab · H(g)` values would let a malicious partner enumerate the small gene panel and probe the other participant's entire carrier set.
+
+The repository-local `crypto-rules-guard` agent hook runs after a Python file under `core/` is saved. It reviews the changed file and relevant tests, reports each violation with its file, line, broken rule, and a proposed fix, and never edits the file silently. A clean review emits only `crypto-rules-guard: pass`.
+
+| Guard rule | Threat-model entry protected |
+|---|---|
+| Derive gene points only as `H(g) = crypto_core_ristretto255_from_hash(SHA-512(b"genematch/v1/gene/" + gene_id))`. | **Partner (malicious) — Probe all panel genes?** and **Partner — Invent a carrier gene?** Consistent, domain-separated gene points preserve the authorized-token construction used against panel probing. |
+| Generate scalars only with `crypto_core_ristretto255_scalar_random()`, never `random`, `secrets`, `os.urandom`, or constants. | **Relay (honest-but-curious) — Learn genes or result?** Strong scalar generation prevents weak-randomness failures that could expose blinded values. |
+| Validate every point received from another party with `crypto_core_ristretto255_is_valid_point` and reject the identity. | **Partner (malicious) — Fake a match or a different result?** This blocks invalid-curve or identity-point attacks at the point-validation boundary; it does not close the separately documented unauthenticated round-2 limitation. |
+| Run PSI only on lab tokens `T_g = k_lab · H(g)`, never raw `H(g)`. | **Partner (malicious) — Probe all panel genes?** and **Partner — Invent a carrier gene?** Requiring the lab key prevents arbitrary small-domain panel probes. |
+| Never log, print, or include a secret scalar, lab key, or token in an error message. | **Relay (honest-but-curious) — Learn genes or result?** and **AI agent / LLM provider — Learn genetic data?** This prevents secret leakage through observability and diagnostics. |
+| Give every crypto function both a positive and a negative test in `tests/`. | Regression protection for all entries above: panel probing, invalid-curve or identity-point attacks, weak randomness, and secret leakage. |
+
+`.kiro/steering/tech.md` is the normative source for these rules. The hook is required to read that file on every review, and this safeguards section describes that same policy rather than defining an independent copy, so the hook and specification cannot drift apart.
+
 ## Stretch designs
 
 - **S1: Prove no hiding.** Prove in zero knowledge that the blinded set is `{a · T}` for exactly the tokens committed in the signed credential. This needs elliptic-curve operations in-circuit, so the token curve should match the circuit's embedded curve (for example Grumpkin in Noir) rather than ristretto255. It is research-grade for a single day, so treat it as design-only unless ahead of schedule. The salted commitment carries over: the salt becomes a private witness, so the public commitment stays unlinkable.
@@ -267,7 +358,7 @@ Residual risks, stated plainly in the README:
 - **S3: Post-quantum.** Genomic data stays sensitive for life, so harvest-now-decrypt-later is a real threat, and DH-PSI is not quantum-safe. Sketch a path through lattice-based OPRFs in the README.
 
 ## Error handling
-- All protocol failures raise `ProtocolError(code, reason=None)`; `user_message` comes from `core.models.USER_MESSAGES`, and `reason` is internal only (never shown, never sensitive). Codes: `BAD_SIGNATURE`, `COMMITMENT_MISMATCH`, `COUNT_MISMATCH`, `SET_TOO_LARGE`, `INVALID_POINT`, `PEER_DECLINED`, `SESSION_EXPIRED`, `RELAY_UNAVAILABLE`, `OUT_OF_ORDER`, `BAD_CREDENTIAL` (own wallet file failed verification; nothing was sent), and for trials `BAD_LAB_SIG`, `BAD_HOLDER_SIG`, `NONCE_REUSED`, `NONCE_EXPIRED`, `WRONG_FINDING`, `NO_MATCHING_CLAIM`, `REQUEST_MISMATCH` (nonce or trial ID differs from the request). The UI shows the user message, for example: "Your partner's results couldn't be verified as coming from the lab, so the check was stopped. Nothing about you was revealed."
+- All protocol failures raise `ProtocolError(code, reason=None)`; `user_message` comes from `core.models.USER_MESSAGES`, and `reason` is internal only (never shown, never sensitive). Codes: `BAD_SIGNATURE`, `COMMITMENT_MISMATCH`, `COUNT_MISMATCH`, `SET_TOO_LARGE`, `INVALID_POINT`, `PEER_DECLINED`, `PEER_FAILED` (the partner's wallet stopped the check), `SESSION_EXPIRED`, `RELAY_UNAVAILABLE`, `OUT_OF_ORDER`, `MALFORMED_MESSAGE` (a peer message failed schema validation: bad hex, wrong type, missing or extra field; wire models are strict and never coerce), `BAD_CREDENTIAL` (own wallet file failed verification; nothing was sent), and for trials `BAD_LAB_SIG`, `BAD_HOLDER_SIG`, `NONCE_REUSED`, `NONCE_EXPIRED`, `WRONG_FINDING`, `NO_MATCHING_CLAIM`, `REQUEST_MISMATCH` (nonce or trial ID differs from the request). The UI shows the user message, for example: "Your partner's results couldn't be verified as coming from the lab, so the check was stopped. Nothing about you was revealed."
 - On any abort, the wallet zeroes the scalar and marks the session failed at the relay.
 
 ## Testing strategy

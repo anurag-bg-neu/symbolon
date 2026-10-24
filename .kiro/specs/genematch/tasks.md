@@ -52,13 +52,17 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: 1.1, 1.2, 4.1, 5.1, 5.4_
   - [x] 1.4 Write unit tests for commutativity, domain separation, invalid and identity point rejection, commitment determinism, and signatures (valid, tampered, wrong key)
     - _Requirements: 1.1, 1.2, 4.3, 5.4_
+  - [x] 1.5 Add the repository-local `crypto-rules-guard` hook and document its safeguards in the specification and `KIRO.md`
+    - _Requirements: none (tooling)_
+  - [x] 1.6 Add Hypothesis property-based tests for PSI correctness, DH commutativity, input-order independence, point validation, lab-key separation, and fresh wire blinding; document the properties and results in `design.md` and `KIRO.md`
+    - _Requirements: 1.1, 1.4, 3.4, 5.1, 5.2, 5.4, 5.5, 5.6_
 
-- [ ] 2. Gene panel and lab service
-  - [ ] 2.1 **P3**, 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
+- [x] 2. Gene panel and lab service
+  - [x] 2.1 **P3** (30 genes, every MedlinePlus page and AR inheritance statement confirmed), 12:00–12:45: write `data/panel.json` with 30–60 autosomal-recessive genes (for example CFTR, HBB, HEXA, SMN1, GBA, PAH, ASPA, FANCC; every gene used by the demo people must be included), each with a condition, a one-line summary, and a MedlinePlus Genetics condition link
     - _Requirements: 1.3, 6.1_
-  - [ ] 2.2 **P1**: `core/issuance.py` (`issue`, with panel, AR, duplicate, `MAX_SET`, and `CLAIM_GENES` checks, and the `salt_commitment` flag). **P2**, 13:15–13:45: `lab/keys.py` (`load_or_create`) and `lab/service.py` (`POST /credentials`, `GET /pubkey`), reading `GENEMATCH_COMMIT_SALT` and passing it to `issue`
+  - [x] 2.2 **P1**: `core/issuance.py` (`issue`, with panel, AR, duplicate, `MAX_SET`, and `CLAIM_GENES` checks, and the `salt_commitment` flag). **P2**, 13:15–13:45: `lab/keys.py` (`load_or_create`) and `lab/service.py` (`POST /credentials`, `GET /pubkey`), reading `GENEMATCH_COMMIT_SALT` and passing it to `issue`
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
-  - [ ] 2.3 **P2**, 13:45–14:00: write `scripts/seed_demo.py` (in-process, no HTTP) to issue credentials for the three demo couples in design.md and write `var/wallets/<person_id>.json`
+  - [x] 2.3 **P2**, 13:45–14:00: write `scripts/seed_demo.py` (in-process, no HTTP) to issue credentials for the three demo couples in design.md and write `var/wallets/<person_id>.json`
     - _Requirements: 7.2_
 
 - [x] 3. Protocol engine, terminal-only — **P1**, 13:15–14:45 — **milestone A at 14:00: PSI works end to end in pytest**
@@ -69,52 +73,80 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
   - [x] 3.3 Write adversarial tests: inflated set, commitment mismatch, bad signature, replayed round-1 message, reflection, cross-session splice, and mode split all abort; a forged token never matches (no abort, S1 limitation); a tampered own credential fails with `BAD_CREDENTIAL`
     - _Requirements: 4.3, 5.3, 5.4_
 
-- [ ] 4. Relay service — **P2**, 12:20–13:15
-  - [ ] 4.1 Implement sessions, invite codes, join (409 for a third participant), accept, decline, fail, state, and 24-hour deletion
+- [x] 4. Relay service — **P2**, 12:20–13:15
+  - [x] 4.1 Implement sessions, invite codes, join (409 for a third participant), accept, decline, fail, state, and 24-hour deletion
     - _Requirements: 2.1, 2.2, 2.5, 3.3_
-  - [ ] 4.2 Implement round storage with the release rules in design.md
+  - [x] 4.2 Implement round storage with the release rules in design.md
     - _Requirements: 2.3, 4.2_
-  - [ ] 4.3 Implement the transparency log (hex prefixes only) at `GET /sessions/{id}/log`
+  - [x] 4.3 Implement the transparency log (hex prefixes only) at `GET /sessions/{id}/log`
     - _Requirements: 7.1_
 
 - [ ] 5. Wallet service and UI — 14:00–16:30 — **milestone B at 16:30: two-browser demo**
-  - [ ] 5.1 **P2** (P1 pairs from 14:45): wallet endpoints from the design.md table (`/me`, `/check/*`), the 500 ms relay polling loop, the in-process counselor call, and scalar zeroing on completion or abort. Construct `Session(role, mode, session_id, credential, genes, lab_pubkey)` and follow the wallet call sequence in design.md (`core/protocol.py` section)
+  - [x] 5.1 **P2** (P1 pairs from 14:45): wallet endpoints from the design.md table (`/me`, `/check/*`), the 500 ms relay polling loop, the in-process counselor call, and scalar zeroing on completion or abort. Construct `Session(role, mode, session_id, credential, genes, lab_pubkey)` and follow the wallet call sequence in design.md (`core/protocol.py` section)
     - _Requirements: 2.4, 3.2, 5.6, 5.7_
-  - [ ] 5.2 **P3**: UI screens: home (credential summary from `/me`), start check (mode choice and invite code), join (mode explanation, then accept or decline), waiting, result with explanation
+  - [x] 5.2 **P3** (built by P1): UI screens: home (credential summary from `/me`), start check (mode choice and invite code), join (mode explanation, then accept or decline), waiting, result with explanation
     - _Requirements: 2.4, 3.1, 3.2, 3.3_
-  - [ ] 5.3 **P3**: build the "What did everyone see?" panel from `/check/seen`, and the synthetic-data banner
+  - [x] 5.3 **P3** (built by P1): build the "What did everyone see?" panel from `/check/seen`, and the synthetic-data banner
     - _Requirements: 7.1, 7.4_
-  - [ ] 5.4 **P2**: write `scripts/run_demo.sh` to start the lab, relay, trial service, and both wallets for `COUPLE=1|2|3`
+  - [x] 5.4 **P2**: write `scripts/run_demo.sh` (macOS/Linux, Git Bash) and `scripts/run_demo.ps1` (Windows) to start the lab, relay, trial service, and both wallets for `COUPLE=1|2|3`
     - _Requirements: none (tooling)_
 
-- [ ] 6. Counselor agent — **P3**, 12:45–14:00
-  - [ ] 6.1 Write the deterministic template fallback first, then the Bedrock Converse adapter and system prompt (env `BEDROCK_MODEL_ID`, `AWS_REGION`, 10-second timeout)
+- [ ] 6. Counselor agent — **P3**, 12:45–14:00 (optional feature; template only for now)
+  - [ ] 6.1 Write the deterministic template fallback first (done), then the Bedrock Converse adapter and system prompt (env `BEDROCK_MODEL_ID`, `AWS_REGION`, 10-second timeout). Bedrock is deferred by decision: only the marked `LLM HOOK` exists
     - _Requirements: 6.5, 6.7_
-  - [ ] 6.2 Implement `build_prompt()` and `explain()` for both modes, plus 3–5 counselor questions and output validation
+  - [x] 6.2 Implement `build_prompt()` and `explain()` for both modes, plus 3–5 counselor questions and output validation
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
-  - [ ] 6.3 Write tests: the Count-mode prompt contains no gene or condition names, and the fallback meets all required statements in both the shared and none-shared cases
+  - [x] 6.3 Write tests: the Count-mode prompt contains no gene or condition names, and the fallback meets all required statements in both the shared and none-shared cases
     - _Requirements: 6.2, 6.3, 6.4, 6.7_
 
-- [ ] 7. Trial eligibility — 16:30–18:00, **only if milestone B is green at 16:30**
-  - [ ] 7.1 **P2**: seed script generates one holder key per person, passes the public key to `issue`, and writes the seed only to that wallet's file
+- [x] 7. Trial eligibility — 16:30–18:00, **only if milestone B is green at 16:30**
+  - [x] 7.1 **P2**: seed script generates one holder key per person, passes the public key to `issue`, and writes the seed only to that wallet's file
     - _Requirements: 8.1_
   - [x] 7.2 **P1**: per-finding signed claims in `core/issuance.py` (salt, holder public key, `genematch/v1/claim/` signature) and `core/claims.py` (`claim_hash`, `make_presentation`, `verify_presentation`)
     - _Requirements: 8.1, 8.3, 8.5_
-  - [ ] 7.3 **P3**: write `data/trials.json` with two demo trials (one BRCA1, one BRCA2), in the design.md shape
+  - [x] 7.3 **P3** (built by P1): write `data/trials.json` with two demo trials (one BRCA1, one BRCA2), in the design.md shape
     - _Requirements: 8.2_
-  - [ ] 7.4 **P2**: implement `trial/service.py`: `/trials`, `/requests`, `GET /requests/{id}`, `/present`, the nonce store with 5-minute expiry, and serving the verifier page
+  - [x] 7.4 **P2** (built by P1): implement `trial/service.py`: `/trials`, `/requests`, `GET /requests/{id}`, `/present`, the nonce store with 5-minute expiry, and serving the verifier page
     - _Requirements: 8.2, 8.5, 8.6_
-  - [ ] 7.5 **P2**: wallet `GET /present/pending` and `POST /present`, following the trial request flow in design.md; tell the user and send nothing if no claim matches
+  - [x] 7.5 **P2** (built by P1): wallet `GET /present/pending` and `POST /present`, following the trial request flow in design.md; tell the user and send nothing if no claim matches
     - _Requirements: 8.3, 8.4_
-  - [ ] 7.6 **P1**: tests: valid presentation, tampered claim, wrong holder key, reused nonce, expired nonce, wrong gene, and the wallet sends exactly one claim
+  - [x] 7.6 **P1**: tests: valid presentation, tampered claim, wrong holder key, reused nonce, expired nonce, wrong gene, and the wallet sends exactly one claim
     - _Requirements: 8.3, 8.5, 8.6_
-  - [ ] 7.7 **P3**: verifier page (trial picker, wallet links, status polling), the wallet approval prompt naming the single finding, and "Trial saw: 1 claim" in the transparency panel
+  - [x] 7.7 **P3** (built by P1): verifier page (trial picker, wallet links, status polling), the wallet approval prompt naming the single finding, and "Trial saw: 1 claim" in the transparency panel
     - _Requirements: 8.3, 8.5, 8.7_
+
+- [x] 10. Wallet UX upgrade — **P3** (built by P1); build in order, cut from the bottom
+  - [x] 10.1 Demo accounts (one per port), sign-in, "Continue as <name>", wrong-wallet message, sign-out, protected routes; tests
+    - _Requirements: 12.1–12.6_
+  - [x] 10.2 `seed_demo.py` loads every wallet from `data/lab_records.json`, `--empty <person>` (repeatable), synthetic labels; tests
+    - _Requirements: 9.2, 13.4_
+  - [x] 10.3 Public landing page with five `<details>` sections and the Alex and Sam walkthrough
+    - _Requirements: 11.1–11.3_
+  - [x] 10.4 Plain-language check flow; "Privacy details" collapsed on the result screen; jargon test
+    - _Requirements: 10.1–10.3_
+  - [x] 10.5 Connect your lab (lab consent page, single-use collection, wallet-generated holder key); tests
+    - _Requirements: 9.1, 9.2, 9.7_
+  - [x] 10.6 Lab files: `core/labfile.py`, `make_lab_file.py` (lab-side tooling), wallet upload with confirmation and raw-DNA rejection; tests
+    - _Requirements: 9.3–9.7_
+  - [x] 10.8 Close the two lab weaknesses: patients sign in to the lab (patient-only consent and approval); "Download your results file" issues only the patient's own record; staff-only record editing; Origin check on lab POSTs; tests
+    - _Requirements: 9.8–9.11_
+  - [x] 10.7 Visual polish and motion (system fonts, one accent, reduced-motion, phone width)
+    - _Requirements: 13.1–13.3_
+
+- [x] 11. Lab portal, one-line invites, short privacy panel — **P3** (built by P1)
+  - [x] 11.1 Lab portal identity (deep violet, own mark and header), lab credentials `<person>@demolab.test`, consent "Send your carrier results to your GeneMatch wallet?"; tests
+    - _Requirements: 9.1_
+  - [x] 11.2 One-time `state` bound to the wallet session; lab redirects to `/connect/callback`; "Results added", decline, and error messages; tests for full flow, decline, invalid/reused/other-session/expired state
+    - _Requirements: 9.1, 9.12_
+  - [x] 11.3 One-line invite messages, grouped code, "What does this mean?", inviter name through the relay; tests
+    - _Requirements: 10.4, 3.2_
+  - [x] 11.4 Three-line privacy summary with "Show technical details" closed by default; tests
+    - _Requirements: 10.3_
 
 - [ ] 8. Polish and stretch — 18:00–19:15, cut freely
   - [ ] 8.1 **P2**, optional: deploy the relay to AWS (App Runner or Lambda)
     - _Requirements: none (stretch)_
-  - [ ] 8.2 **P1**, optional: design notes for S1, S2, and S3 in the README
+  - [ ] 8.2 **P1**, optional: design notes for S1, S2, and S3 in the README (written in design.md "Stretch designs"; copy into the README with 9.1)
     - _Requirements: none (stretch)_
   - [x] 8.3 **P1**: check timing: a full check takes under 3 seconds of compute
     - _Requirements: 7.3_

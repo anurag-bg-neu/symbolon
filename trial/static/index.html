@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Symbolon trial verifier</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+</head>
+<body>
+  <div class="banner" role="note">Demo with synthetic data. Not medical advice.</div>
+  <header class="top"><span class="brand"><img class="logo" src="logo.svg" alt="" width="28" height="28">Symbolon · Trial verifier</span></header>
+  <main id="app" tabindex="-1">
+    <h1 id="title" tabindex="-1">Check trial eligibility</h1>
+    <p class="muted">Ask a patient's wallet to prove one lab-signed genetic finding. You will see that finding and nothing else.</p>
+
+    <form id="pick" class="card">
+      <fieldset>
+        <legend>Choose a trial</legend>
+        <div id="trials"><p class="muted">Loading trials…</p></div>
+      </fieldset>
+      <div class="actions"><button type="submit" class="btn primary">Create request</button></div>
+    </form>
+
+    <section id="request" class="card" hidden aria-labelledby="req-title">
+      <h2 id="req-title" tabindex="-1">Request created</h2>
+      <p id="req-what"></p>
+      <p>Open one of these links to ask the patient's wallet to approve:</p>
+      <ul>
+        <li><a id="link-a" target="_blank" rel="noopener">Partner A's wallet (port 8101)</a></li>
+        <li><a id="link-b" target="_blank" rel="noopener">Partner B's wallet (port 8102)</a></li>
+      </ul>
+      <p class="small muted" id="req-expiry"></p>
+    </section>
+
+    <section id="status" class="card" hidden aria-labelledby="status-title">
+      <h2 id="status-title">Status</h2>
+      <p id="status-text" class="lead" aria-live="polite"></p>
+      <h3>What the trial received</h3>
+      <dl id="received"></dl>
+    </section>
+
+    <div id="error"></div>
+  </main>
+  <script src="verifier.js"></script>
+</body>
+</html>

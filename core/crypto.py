@@ -1,4 +1,4 @@
-"""Crypto primitives for GeneMatch.
+"""Crypto primitives for Symbolon.
 
 ristretto255 via rbcl (libsodium), Ed25519 via PyNaCl, SHA-2 via hashlib.
 This is the only module that imports the group library. Pure functions, no I/O,
@@ -26,6 +26,7 @@ CREDENTIAL = b"genematch/v1/credential/"
 CLAIM = b"genematch/v1/claim/"
 CLAIM_HASH = b"genematch/v1/claim-hash/"
 PRESENT = b"genematch/v1/present/"
+LAB_FILE = b"genematch/v1/lab-file/"
 
 POINT_BYTES = 32
 SCALAR_BYTES = 32

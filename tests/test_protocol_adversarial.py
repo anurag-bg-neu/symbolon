@@ -219,7 +219,23 @@ def test_malformed_round1_payload(lab, couple):
     sa, sb, xa, xb = to_round1(lab, a, b)
     bad = xb.model_dump()
     bad["blinded"] = ["not-hex"]
-    assert_abort(sa, lambda: sa.round2(bad), "INVALID_POINT")
+    assert_abort(sa, lambda: sa.round2(bad), "MALFORMED_MESSAGE")
+
+
+@pytest.mark.parametrize("value", ["2", True, 2.0])
+def test_coerced_count_is_malformed(lab, couple, value):
+    """Strict models: a count that is not a real int is rejected, not coerced."""
+    a, b = couple
+    sa, sb, xa, xb = to_round1(lab, a, b)
+    bad = {**xb.model_dump(), "count": value}
+    assert_abort(sa, lambda: sa.round2(bad), "MALFORMED_MESSAGE")
+
+
+def test_unknown_field_is_malformed(lab, couple):
+    a, b = couple
+    sa, sb, xa, xb = to_round1(lab, a, b)
+    bad = {**xb.model_dump(), "tokens": []}
+    assert_abort(sa, lambda: sa.round2(bad), "MALFORMED_MESSAGE")
 
 
 # --- round-2 checks ----------------------------------------------------------
@@ -318,3 +334,36 @@ def test_round2_garbage_forces_false_no_match(lab):
     garbage = DoubleBlinded(points=[random_point().hex()])
     r = sa.result(garbage)
     assert r.shared_count == 0  # a real match is hidden; no abort is possible here
+
+
+def test_round2_echo_forces_false_match(lab):
+    """DLEQ gap: echoing Alex's own round 2 back to him fakes a match (documented).
+
+    The relay holds Alex's round 2 (a · X_peer), so it can do this without the
+    partner. Nothing shared, yet Alex sees every gene matched, up to min(counts).
+    """
+    a = make_person(lab, "jordan", ["HBB", "SMN1"])
+    b = make_person(lab, "riley", ["ASPA", "FANCC", "PAH"])
+    for mode in ("detail", "count"):
+        sa, sb, xa, xb = to_round1(lab, a, b, mode)
+        own_round2 = sa.round2(xb)
+        echoed = DoubleBlinded(points=own_round2.points[: len(xa.blinded)])
+        r = sa.result(echoed)
+        assert r.shared_count == 2  # truth: 0
+        if mode == "detail":
+            assert r.shared_genes == ["HBB", "SMN1"]
+
+
+def test_round2_permutation_mislabels_genes(lab):
+    """DLEQ gap: in Detail mode the peer knows which of Alex's slots match and can
+    reorder its round 2, so Alex names the wrong shared gene (documented)."""
+    a = make_person(lab, "casey", ["HBB", "HEXA", "SMN1"])
+    b = make_person(lab, "morgan", ["GBA", "HBB", "SMN1"])
+    # Two of Casey's three slots match. A cyclic shift moves every point, so the
+    # one non-matching point always lands in a slot whose gene is then reported.
+    sa, sb, xa, xb = to_round1(lab, a, b, "detail")
+    sa.round2(xb)
+    ya = sb.round2(xa)
+    shifted = DoubleBlinded(points=ya.points[1:] + ya.points[:1])
+    r = sa.result(shifted)
+    assert r.shared_count == 2 and r.shared_genes != ["HBB", "SMN1"]  # wrong gene named

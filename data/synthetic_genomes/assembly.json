@@ -1,0 +1,50 @@
+{
+  "format": "genematch.synthetic-wgs-assembly.v1",
+  "assembly_id": "synthetic-grch38-lengths-v1",
+  "synthetic": true,
+  "reference_basis": {
+    "name": "GRCh38.p14",
+    "accession": "GCF_000001405.40",
+    "usage": "Primary-contig names and lengths only; no reference bases are copied.",
+    "source": "https://www.ncbi.nlm.nih.gov/refseq/annotation_euk/Homo_sapiens/GCF_000001405.40-RS_2025_08/"
+  },
+  "ploidy": 2,
+  "sequence_length_per_haplotype": 3088286401,
+  "total_bases_per_sample": 6176572802,
+  "generator": {
+    "name": "sha256-counter-2bit-v1",
+    "domain": "genematch/v1/synthetic-genome/",
+    "block_bases": 128,
+    "alphabet": {"00": "A", "01": "C", "10": "G", "11": "T"},
+    "input": "domain UTF-8 || 32-byte sample seed || contig UTF-8 || 00 || haplotype u8 || block index u64 big-endian",
+    "position_rule": "For one-based position p, block index=(p-1)//128 and base offset=(p-1)%128; consume each SHA-256 byte from its most-significant to least-significant two-bit pair."
+  },
+  "contigs": [
+    {"name": "chr1", "length": 248956422},
+    {"name": "chr2", "length": 242193529},
+    {"name": "chr3", "length": 198295559},
+    {"name": "chr4", "length": 190214555},
+    {"name": "chr5", "length": 181538259},
+    {"name": "chr6", "length": 170805979},
+    {"name": "chr7", "length": 159345973},
+    {"name": "chr8", "length": 145138636},
+    {"name": "chr9", "length": 138394717},
+    {"name": "chr10", "length": 133797422},
+    {"name": "chr11", "length": 135086622},
+    {"name": "chr12", "length": 133275309},
+    {"name": "chr13", "length": 114364328},
+    {"name": "chr14", "length": 107043718},
+    {"name": "chr15", "length": 101991189},
+    {"name": "chr16", "length": 90338345},
+    {"name": "chr17", "length": 83257441},
+    {"name": "chr18", "length": 80373285},
+    {"name": "chr19", "length": 58617616},
+    {"name": "chr20", "length": 64444167},
+    {"name": "chr21", "length": 46709983},
+    {"name": "chr22", "length": 50818468},
+    {"name": "chrX", "length": 156040895},
+    {"name": "chrY", "length": 57227415},
+    {"name": "chrM", "length": 16569}
+  ],
+  "notice": "This deterministic sequence is wholly synthetic, is not a clinically realistic human genome, and must never be used for diagnosis or research conclusions. Two haplotypes are defined for every contig to avoid assigning sex or gender to demo identities."
+}

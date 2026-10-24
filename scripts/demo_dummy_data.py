@@ -1,4 +1,4 @@
-"""Run the GeneMatch protocol against dummy, synthetic genetic data.
+"""Run the Symbolon protocol against dummy, synthetic genetic data.
 
 Creates a fake lab, a small autosomal-recessive carrier-screening panel, and two
 people with lab-signed credentials, then runs the full two-party DH-PSI protocol
@@ -7,12 +7,19 @@ end-to-end in both Count and Detail modes.
 No real genetic data is used. Everything here is synthetic.
 
 Run from the repo root:
-    .venv/bin/python scripts/demo_dummy_data.py
+    macOS/Linux: .venv/bin/python scripts/demo_dummy_data.py
+    Windows:     .venv\\Scripts\\python.exe scripts\\demo_dummy_data.py
 """
 
 from __future__ import annotations
 
 import secrets
+import sys
+
+# Windows consoles default to cp1252; force UTF-8 so the dashes print everywhere.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from core import crypto
 from core.issuance import issue
@@ -108,7 +115,7 @@ def print_result(name_a, name_b, mode, res, expected):
 
 def main() -> int:
     print("=" * 68)
-    print("GeneMatch demo  —  synthetic carrier-screening data")
+    print("Symbolon demo  —  synthetic carrier-screening data")
     print("=" * 68)
 
     lab = DummyLab()
