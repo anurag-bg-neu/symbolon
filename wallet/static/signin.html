@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · GeneMatch</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="banner" role="note">Demo with synthetic data. Not medical advice.</div>
+  <header class="top">
+    <a class="brand" href="/">GeneMatch</a>
+  </header>
+  <main id="main" class="narrow">
+    <section class="screen reveal">
+      <h1 id="screen-title" tabindex="-1">Sign in to <span id="owner">your</span> wallet.</h1>
+      <form id="signin" class="card" novalidate>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <div id="error" aria-live="polite"></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Sign in</button>
+        </div>
+      </form>
+      <div class="card soft">
+        <p class="small"><strong>Demo account</strong> (synthetic data): <span id="demo-creds">loading…</span></p>
+        <div class="actions"><button id="demo" type="button" class="btn secondary">Continue as …</button></div>
+      </div>
+      <p class="small muted">Each demo wallet belongs to one synthetic person. Partner A uses localhost:8101 and partner B uses localhost:8102.</p>
+    </section>
+  </main>
+  <script src="signin.js"></script>
+</body>
+</html>

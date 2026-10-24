@@ -115,6 +115,24 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
   - [x] 7.7 **P3** (built by P1): verifier page (trial picker, wallet links, status polling), the wallet approval prompt naming the single finding, and "Trial saw: 1 claim" in the transparency panel
     - _Requirements: 8.3, 8.5, 8.7_
 
+- [x] 10. Wallet UX upgrade — **P3** (built by P1); build in order, cut from the bottom
+  - [x] 10.1 Demo accounts (one per port), sign-in, "Continue as <name>", wrong-wallet message, sign-out, protected routes; tests
+    - _Requirements: 12.1–12.6_
+  - [x] 10.2 `seed_demo.py` loads every wallet from `data/lab_records.json`, `--empty <person>` (repeatable), synthetic labels; tests
+    - _Requirements: 9.2, 13.4_
+  - [x] 10.3 Public landing page with five `<details>` sections and the Alex and Sam walkthrough
+    - _Requirements: 11.1–11.3_
+  - [x] 10.4 Plain-language check flow; "Privacy details" collapsed on the result screen; jargon test
+    - _Requirements: 10.1–10.3_
+  - [x] 10.5 Connect your lab (lab consent page, single-use collection, wallet-generated holder key); tests
+    - _Requirements: 9.1, 9.2, 9.7_
+  - [x] 10.6 Lab files: `core/labfile.py`, `make_lab_file.py` (lab-side tooling), wallet upload with confirmation and raw-DNA rejection; tests
+    - _Requirements: 9.3–9.7_
+  - [x] 10.8 Close the two lab weaknesses: patients sign in to the lab (patient-only consent and approval); "Download your results file" issues only the patient's own record; staff-only record editing; Origin check on lab POSTs; tests
+    - _Requirements: 9.8–9.11_
+  - [x] 10.7 Visual polish and motion (system fonts, one accent, reduced-motion, phone width)
+    - _Requirements: 13.1–13.3_
+
 - [ ] 8. Polish and stretch — 18:00–19:15, cut freely
   - [ ] 8.1 **P2**, optional: deploy the relay to AWS (App Runner or Lambda)
     - _Requirements: none (stretch)_

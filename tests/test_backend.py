@@ -24,7 +24,7 @@ from core.models import CLAIM_FINDING
 from core.protocol import Session
 from lab import keys
 from relay import service as relay
-from tests.helpers import Lab
+from tests.helpers import Lab, signed_in_client
 
 ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location("seed_demo", ROOT / "scripts" / "seed_demo.py")
@@ -65,8 +65,7 @@ def relay_client() -> httpx.AsyncClient:
 
 
 def wallet_client(person_id: str, rc: httpx.AsyncClient) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(person_id, rc)),
-                             base_url=f"http://{person_id}")
+    return signed_in_client(create_app(person_id, rc), f"http://{person_id}")
 
 
 async def wait_terminal(w: httpx.AsyncClient, timeout: float = 5.0) -> dict:
@@ -301,7 +300,9 @@ def test_wallet_me_and_idle(var):
         w = wallet_client("alex", relay_client())
         me = (await w.get("/me")).json()
         assert me == {"person_id": "alex", "genes": ["CFTR", "GBA", "PAH"], "count": 3,
-                      "claims": [{"gene": "BRCA1", "finding": CLAIM_FINDING}]}
+                      "claims": [{"gene": "BRCA1", "finding": CLAIM_FINDING}],
+                      "display_name": "Alex", "synthetic": True, "has_results": True,
+                      "lab_portal": "http://localhost:8200"}
         assert (await w.get("/check/status")).json()["state"] == "idle"
     asyncio.run(go())
 
@@ -398,8 +399,8 @@ def test_wallet_zeroes_scalar_on_completion_and_abort(var, decline_after_r0):
     async def go():
         rc = relay_client()
         app_a, app_b = create_app("alex", rc), create_app("sam", rc)
-        wa = httpx.AsyncClient(transport=httpx.ASGITransport(app=app_a), base_url="http://a")
-        wb = httpx.AsyncClient(transport=httpx.ASGITransport(app=app_b), base_url="http://b")
+        wa = signed_in_client(app_a, "http://a")
+        wb = signed_in_client(app_b, "http://b")
         s = (await wa.post("/check/start", json={"mode": "count"})).json()
         await wb.post("/check/join", json={"invite_code": s["invite_code"]})
         if decline_after_r0:

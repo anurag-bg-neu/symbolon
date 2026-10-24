@@ -107,3 +107,48 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 5. WHEN a presentation arrives THE verifier SHALL check the lab signature, the holder signature against the holder key in the claim, the nonce, and that the claim matches the requirement, and SHALL show "Eligible — verified by lab" or a specific failure reason.
 6. IF the nonce was already used or has expired (5 minutes) THEN THE verifier SHALL reject the presentation.
 7. THE transparency panel SHALL show that the trial received exactly one claim.
+
+### Requirement 9: Getting lab results into the wallet
+
+**User Story:** As a tested person, I want to load my results from my lab, so that my partner and trials can trust them.
+
+#### Acceptance Criteria
+1. THE wallet SHALL offer "Connect your lab": the wallet requests a credential from the demo lab, the user approves on the lab's own consent page ("GeneMatch Demo Lab wants to send your carrier results to this wallet"), and the wallet collects the lab-signed credential and trial claims server-side.
+2. WHEN connecting THE lab SHALL issue only the results in its own synthetic records for that person, and THE wallet SHALL generate the holder key itself and send only its public key.
+3. THE wallet SHALL offer "Add your lab file" (file picker and drag-and-drop, JSON only, at most 100 KB) for carrier credentials exported by the demo lab.
+4. BEFORE accepting a lab file THE wallet SHALL verify the lab signature on the credential and on the gene list against its pinned lab key, run the existing owner-side credential check, and confirm the file belongs to this wallet's person, showing a plain-language reason on any failure.
+5. THE wallet SHALL replace existing results from a file only after the user confirms ("Replace your current results?"). Lab files carry carrier credentials only; trial claims come only through Connect.
+6. IF a raw DNA file (FASTQ, VCF, consumer genotype export) is uploaded THEN THE wallet SHALL reject it and explain that results must come from a lab so nobody can fake them.
+7. Lab files and results SHALL stay in the wallet and SHALL never be sent to the relay.
+8. Only the lab SHALL decide what a credential contains. A patient SHALL never choose their own genes: the lab's "Download your results file" page issues a lab file for the signed-in patient's own lab record only.
+9. THE lab SHALL require the patient to sign in to the lab before showing or approving a Connect request, and SHALL refuse approval unless the signed-in patient is the person the wallet belongs to. Lab staff accounts SHALL NOT approve on a patient's behalf.
+10. Lab staff (signed in with a staff account) MAY edit a synthetic patient's lab record on a staff-only page, using the existing issuance checks (panel genes, autosomal recessive, no duplicates, at most `MAX_SET`). The patient receives the new results the next time they connect or download their file. `scripts/make_lab_file.py` is lab-side tooling that requires the lab's key file.
+11. Lab POST requests SHALL pass the same Origin check as the wallet, and lab sessions SHALL use an HttpOnly, SameSite=Lax cookie.
+
+### Requirement 10: Plain language by default
+
+1. Default wallet screens SHALL use plain language only, with no cryptographic terms (for example PSI, ristretto255, commitment, scalar, nonce, token).
+2. THE check SHALL show three steps: "Sealing your list", "Exchanging scrambled lists", "Comparing", with status text "Checking privately…" and "Done".
+3. THE result screen SHALL include "What did everyone see?" inside a collapsible "Privacy details" section, closed by default. Technical terms are allowed there.
+
+### Requirement 11: Public landing page
+
+1. THE wallet SHALL serve a public landing page with the headline "Know your genetic risks. Keep your genetic secrets.", a one-sentence description, "Sign in", and "See how it works".
+2. THE page SHALL include collapsible sections built with `<details><summary>`: What is a carrier?, Why does it matter for couples?, How does GeneMatch keep it private?, What can I do with it?, What GeneMatch doesn't do.
+3. THE page SHALL include a non-interactive 4-step walkthrough of a couple check with the synthetic people Alex and Sam.
+
+### Requirement 12: Demo sign-in
+
+1. Each wallet port SHALL belong to exactly one synthetic person with one demo account (email and password), plus a "Continue as <name>" button.
+2. IF someone signs in on a port with another person's valid credentials THEN THE wallet SHALL refuse with "This wallet belongs to <name>. Open <other>'s wallet at localhost:<port>."
+3. Passwords SHALL be stored only as salted, memory-hard hashes (`hashlib.scrypt`), never in plain text. A wrong password and an unknown email SHALL get the same message.
+4. Sessions SHALL use HttpOnly, SameSite=Lax cookies with a per-wallet cookie name, expire after 8 hours, and be invalidated on sign-out.
+5. Every wallet API endpoint and the app page, including trial approval, SHALL require a session; unauthenticated API calls get 401 and the app page redirects to sign-in, preserving a pending trial request.
+6. Accounts SHALL hold no genetic data.
+
+### Requirement 13: Design and accessibility
+
+1. Calm, Apple-inspired design: generous whitespace, large headlines, short sentences, one accent colour, the system font stack, without copying Apple's logos, images, names, or layouts.
+2. Motion SHALL be subtle (fade or slide on reveal) and disabled under `prefers-reduced-motion`. Layouts SHALL work down to phone width.
+3. Labels on inputs, visible focus, `aria-live` status, focus moved on screen change, and sufficient contrast SHALL be kept. Results stay calm: no red, no alarm icons, no verdict on marriage or children.
+4. Synthetic data SHALL be labelled wherever it appears (wallet home, lab pages, lab files).

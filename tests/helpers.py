@@ -100,3 +100,15 @@ def run_pair(lab: Lab, a: Person, b: Person, mode: str):
     yb = sa.round2(xb)  # a · X_B, sent to Sam
     ya = sb.round2(xa)  # b · X_A, sent to Alex
     return sa.result(ya), sb.result(yb), sa, sb
+
+
+def signed_in_client(app, base_url: str):
+    """An in-process client for a wallet app, already signed in as its owner.
+
+    Creates a real session in the wallet's own store and sends it as the wallet's
+    cookie, exactly as the browser would after /auth/signin.
+    """
+    import httpx
+    token = app.state.sessions.create()
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=base_url,
+                             cookies={app.state.cookie_name: token})
