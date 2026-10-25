@@ -583,7 +583,10 @@
   }
 
   function showResult(st) {
-    var col = el("div", { class: "col" }, [resultCard(st)]);
+    var col = el("div", { class: "col" }, [
+      el("p", { class: "lead muted", text: "From your most recently completed check." }),
+      resultCard(st)
+    ]);
     // Optional counselor module: rendered only if loaded and an explanation exists.
     if (window.GeneMatchCounselor && st.explanation) {
       try { window.GeneMatchCounselor.render(st.explanation, col); } catch (e) { /* optional */ }

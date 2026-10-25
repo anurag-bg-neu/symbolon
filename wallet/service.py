@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from core import crypto
 from core.claims import make_presentation, select_claim
 from core.labfile import LabFileError, verify_connect_claims, verify_lab_file
-from core.models import Mode, ProtocolError, Result, SignedClaim
+from core.models import Explanation, Mode, ProtocolError, Result, SignedClaim
 from core.protocol import Session
 from lab import keys
 from wallet.auth import Accounts, Sessions, demo_email, demo_password, load_accounts
@@ -137,7 +137,31 @@ def _new_check(**kw: Any) -> dict[str, Any]:
     return {"state": "idle", "mode": None, "round": None, "result": None,
             "explanation": None, "error": None, "sid": None, "role": None,
             "session": None, "task": None, "counselor_input": None,
-            "own_meta": None, "peer_meta": None, **kw}
+            "own_meta": None, "peer_meta": None, "seen_snapshot": None, **kw}
+
+
+def _restored_check(saved: Any) -> dict[str, Any]:
+    """Load the latest completed check, ignoring malformed local state."""
+    try:
+        if not isinstance(saved, dict):
+            raise ValueError("missing saved check")
+        result = Result.model_validate(saved["result"])
+        if result.mode == "count" and result.shared_genes is not None:
+            raise ValueError("count result contains genes")
+        if result.mode == "detail" and (
+                result.shared_genes is None or len(result.shared_genes) != result.shared_count):
+            raise ValueError("detail result count differs")
+        raw_explanation = saved.get("explanation")
+        explanation = (Explanation.model_validate(raw_explanation).model_dump()
+                       if raw_explanation is not None else None)
+        seen = saved["seen"]
+        if not isinstance(seen, dict) or not isinstance(seen.get("parties"), list):
+            raise ValueError("malformed privacy snapshot")
+    except (KeyError, TypeError, ValueError):
+        return _new_check()
+    return _new_check(state="done", mode=result.mode, round=2,
+                      result=result.model_dump(), explanation=explanation,
+                      seen_snapshot=seen)
 
 
 def _signed_meta(round1: dict[str, Any]) -> dict[str, Any]:
@@ -177,7 +201,7 @@ def create_app(person_id: str | None = None,
     poll = float(os.environ.get("GENEMATCH_POLL", "0.5"))
     panel = {e["gene"]: e for e in keys.load_panel()}
     app = FastAPI(title=f"Symbolon wallet ({person_id})")
-    holder = {"check": _new_check()}
+    holder = {"check": _restored_check(wallet.get("last_check"))}
     app.state.holder = holder  # lets tests inspect the live Session
 
     accounts = Accounts(person_id, load_accounts(keys.var_dir() / "accounts.json"))
@@ -212,6 +236,13 @@ def create_app(person_id: str | None = None,
     # --- sign-in -------------------------------------------------------------
 
     def _start_session(next_url: str = "/app") -> JSONResponse:
+        # A completed result belongs to the wallet, not to an auth cookie. Restore it
+        # on each later sign-in unless a check is currently active in this process.
+        if holder["check"]["state"] not in (
+                "waiting_for_partner", "awaiting_accept", "running"):
+            restored = _restored_check(wallet.get("last_check"))
+            if restored["state"] == "done":
+                holder["check"] = restored
         resp = JSONResponse({"ok": True, "next": next_url})
         resp.set_cookie(cookie, sessions.create(), max_age=sessions.ttl, path="/",
                         httponly=True, samesite="lax")
@@ -357,6 +388,19 @@ def create_app(person_id: str | None = None,
         check["result"] = result.model_dump()
         await counsel(check, result)
         check["state"] = "done"
+        try:
+            snapshot = await seen_data(check, include_presentations=False)
+            check["seen_snapshot"] = snapshot
+            wallet["last_check"] = {
+                "result": check["result"],
+                "explanation": check["explanation"],
+                "seen": snapshot,
+            }
+            save_wallet()
+        except Exception as e:
+            # A save failure must not erase an answer that was already computed.
+            # Log only the exception type because protocol material can be sensitive.
+            log.warning("could not save latest check: %s", type(e).__name__)
 
     async def counsel(check: dict[str, Any], result: Result) -> None:
         """Call P3's counselor if it exists. It sees only the agreed result."""
@@ -459,10 +503,27 @@ def create_app(person_id: str | None = None,
         c = holder["check"]
         return {k: c[k] for k in ("state", "mode", "round", "result", "explanation", "error")}
 
-    @app.get("/check/seen")
-    async def seen() -> dict:
-        check = holder["check"]
-        t = check["session"].transcript() if check["session"] else {"sent": {}, "received": {}}
+    def trial_seen_items() -> list[dict[str, Any]]:
+        return [item for p in presentations for item in (
+            {"label": f"claims shared with {p['trial_id']}", "value": 1},
+            {"label": f"finding shared with {p['trial_id']}",
+             "value": f"{p['gene']}: {p['finding']}"},
+            {"label": f"challenge from {p['trial_id']}", "value": p["nonce"][:8]},
+        )]
+
+    async def seen_data(check: dict[str, Any], *,
+                        include_presentations: bool = True) -> dict[str, Any]:
+        if check["session"] is None and check["seen_snapshot"] is not None:
+            snapshot = json.loads(json.dumps(check["seen_snapshot"]))
+            if include_presentations:
+                trial_party = next((p for p in snapshot["parties"]
+                                    if p.get("party") == "trial"), None)
+                if trial_party is not None:
+                    trial_party["items"] = trial_seen_items()
+            return snapshot
+
+        t = check["session"].transcript() if check["session"] else {
+            "sent": {}, "received": {}}
         relay_log: list[dict] = []
         if check["sid"]:
             try:
@@ -474,8 +535,8 @@ def create_app(person_id: str | None = None,
         me_items += _meta_items(check["peer_meta"], "from your partner")
         if check["result"]:
             me_items.append({"label": "result", "value": check["result"]})
-        partner_items = _items(t["sent"], "from you") + _meta_items(check["own_meta"],
-                                                                    "from you")
+        partner_items = _items(t["sent"], "from you") + _meta_items(
+            check["own_meta"], "from you")
         relay_items: list[dict] = []
         for e in relay_log:
             relay_items.append({"label": f"round {e['round']} {e['kind']} from {e['role']}",
@@ -486,15 +547,15 @@ def create_app(person_id: str | None = None,
             {"party": "partner", "items": partner_items},
             {"party": "relay", "items": relay_items},
             {"party": "agent", "items": [{"label": "counselor input",
-                                          "value": check["counselor_input"]}]
+                                              "value": check["counselor_input"]}]
              if check["counselor_input"] is not None else []},
-            {"party": "trial", "items": [item for p in presentations for item in (
-                {"label": f"claims shared with {p['trial_id']}", "value": 1},
-                {"label": f"finding shared with {p['trial_id']}",
-                 "value": f"{p['gene']}: {p['finding']}"},
-                {"label": f"challenge from {p['trial_id']}", "value": p["nonce"][:8]},
-            )]},
+            {"party": "trial", "items": trial_seen_items()
+             if include_presentations else []},
         ]}
+
+    @app.get("/check/seen")
+    async def seen() -> dict:
+        return await seen_data(holder["check"])
 
     # --- trial eligibility (selective disclosure) ----------------------------
 

@@ -90,6 +90,8 @@ All interfaces are fixed in `design.md` ("Components and interfaces" and "Data m
     - _Requirements: 7.1, 7.4_
   - [x] 5.4 **P2**: write `scripts/run_demo.sh` (macOS/Linux, Git Bash) and `scripts/run_demo.ps1` (Windows) to start the lab, relay, trial service, and both wallets for `COUPLE=1|2|3`
     - _Requirements: none (tooling)_
+  - [x] 5.5 **P2 + P3**: persist the latest completed result and redacted privacy snapshot in the local wallet file, restore it after later sign-ins and process restarts, and label it as the latest result in the UI
+    - _Requirements: 12.7_
 
 - [ ] 6. Counselor agent — **P3**, 12:45–14:00 (optional feature; template only for now)
   - [ ] 6.1 Write the deterministic template fallback first (done), then the Bedrock Converse adapter and system prompt (env `BEDROCK_MODEL_ID`, `AWS_REGION`, 10-second timeout). Bedrock is deferred by decision: only the marked `LLM HOOK` exists
