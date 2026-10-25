@@ -213,6 +213,18 @@ def create_app(person_id: str | None = None,
     app.state.connects = connects  # lets tests age or inspect pending Connect states
     pending_uploads: dict[str, dict[str, Any]] = {}
 
+    def restore_latest(*, after_signin: bool = False) -> None:
+        """Rehydrate the latest result whenever no check is currently active."""
+        state = holder["check"]["state"]
+        if state in ("waiting_for_partner", "awaiting_accept", "running", "done"):
+            return
+        # Keep a just-failed or declined check visible until the user signs in again.
+        if state in ("failed", "declined") and not after_signin:
+            return
+        restored = _restored_check(wallet.get("last_check"))
+        if restored["state"] == "done":
+            holder["check"] = restored
+
     def signed_in(request: Request) -> bool:
         return sessions.valid(request.cookies.get(cookie))
 
@@ -236,13 +248,8 @@ def create_app(person_id: str | None = None,
     # --- sign-in -------------------------------------------------------------
 
     def _start_session(next_url: str = "/app") -> JSONResponse:
-        # A completed result belongs to the wallet, not to an auth cookie. Restore it
-        # on each later sign-in unless a check is currently active in this process.
-        if holder["check"]["state"] not in (
-                "waiting_for_partner", "awaiting_accept", "running"):
-            restored = _restored_check(wallet.get("last_check"))
-            if restored["state"] == "done":
-                holder["check"] = restored
+        # A completed result belongs to the wallet, not to an auth cookie.
+        restore_latest(after_signin=True)
         resp = JSONResponse({"ok": True, "next": next_url})
         resp.set_cookie(cookie, sessions.create(), max_age=sessions.ttl, path="/",
                         httponly=True, samesite="lax")
@@ -383,11 +390,10 @@ def create_app(person_id: str | None = None,
         finally:
             if s is not None:
                 s.zero()
-        # Explain first, then flip to done, so a client that sees "done" also sees
-        # the explanation (or null if there is no counselor or it failed).
+        # Persist the answer before exposing "done", so an immediate sign-out or
+        # process restart cannot race the wallet-file update.
         check["result"] = result.model_dump()
         await counsel(check, result)
-        check["state"] = "done"
         try:
             snapshot = await seen_data(check, include_presentations=False)
             check["seen_snapshot"] = snapshot
@@ -401,6 +407,7 @@ def create_app(person_id: str | None = None,
             # A save failure must not erase an answer that was already computed.
             # Log only the exception type because protocol material can be sensitive.
             log.warning("could not save latest check: %s", type(e).__name__)
+        check["state"] = "done"
 
     async def counsel(check: dict[str, Any], result: Result) -> None:
         """Call P3's counselor if it exists. It sees only the agreed result."""
@@ -500,6 +507,7 @@ def create_app(person_id: str | None = None,
 
     @app.get("/check/status")
     def status() -> dict:
+        restore_latest()
         c = holder["check"]
         return {k: c[k] for k in ("state", "mode", "round", "result", "explanation", "error")}
 
