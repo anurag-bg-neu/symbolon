@@ -31,7 +31,8 @@ BIG_PANEL = PANEL + [_entry(f"SYN{i:02d}") for i in range(1, 31)]
 
 COUPLES = [
     # (name_a, genes_a, name_b, genes_b, expected shared)
-    ("alex", ["CFTR", "GBA", "PAH"], "sam", ["CFTR", "HEXA"], ["CFTR"]),
+    ("alex", ["CFTR", "GBA", "PAH"], "sam", ["CFTR", "GBA", "HEXA", "PAH"],
+     ["CFTR", "GBA", "PAH"]),
     ("jordan", ["HBB", "SMN1"], "riley", ["ASPA", "FANCC", "PAH"], []),
     ("casey", ["HBB", "HEXA", "SMN1"], "morgan", ["HBB", "SMN1", "GBA"], ["HBB", "SMN1"]),
 ]

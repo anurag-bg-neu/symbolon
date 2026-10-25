@@ -34,7 +34,7 @@ _spec.loader.exec_module(seed_demo)
 from wallet.service import create_app  # noqa: E402
 
 PANEL_GENES = {e["gene"] for e in keys.load_panel()}
-EXPECTED = {1: ["CFTR"], 2: [], 3: ["HBB", "SMN1"]}
+EXPECTED = {1: ["CFTR", "GBA", "PAH"], 2: [], 3: ["HBB", "SMN1"]}
 HEX8 = re.compile(r"^[0-9a-f]{8}$")
 
 
@@ -368,10 +368,10 @@ def test_seen_shows_only_prefixes_and_counts(var):
     blob = json.dumps(seen)
     assert not re.search(r"[0-9a-f]{16,}", blob)
     # The template counselor is installed: in Detail mode it receives only the
-    # panel entries for the agreed shared genes (CFTR for alex/sam), nothing else.
+    # panel entries for the agreed shared genes (CFTR, GBA, and PAH), nothing else.
     agent_input = parties["agent"][0]["value"] if parties["agent"] else None
     if agent_input is not None:
-        assert [e["gene"] for e in agent_input["shared"]] == ["CFTR"]
+        assert [e["gene"] for e in agent_input["shared"]] == ["CFTR", "GBA", "PAH"]
 
 
 @pytest.mark.parametrize("mode", ["count", "detail"])

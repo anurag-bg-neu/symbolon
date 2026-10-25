@@ -123,7 +123,8 @@ def main() -> int:
 
     # --- Dummy couples: (name, carrier genes) and the genes they truly share --
     couples = [
-        ("Alex", ["CFTR", "GBA", "PAH"], "Sam", ["CFTR", "HEXA"], ["CFTR"]),
+        ("Alex", ["CFTR", "GBA", "PAH"], "Sam", ["CFTR", "GBA", "HEXA", "PAH"],
+         ["CFTR", "GBA", "PAH"]),
         ("Jordan", ["HBB", "SMN1"], "Riley", ["ASPA", "FANCC", "PAH"], []),
         ("Casey", ["HBB", "HEXA", "SMN1"], "Morgan", ["HBB", "SMN1", "GBA"],
          ["HBB", "SMN1"]),

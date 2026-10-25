@@ -122,7 +122,7 @@ Choose a different couple with `COUPLE=2 ./scripts/run_demo.sh` (1: Alex & Sam, 
 1. Open http://localhost:8101 and http://localhost:8102 side by side and sign in as Alex and Sam.
 2. In Alex's wallet, start a check and pick a mode — *count* (how many genes shared) or *detail* (which ones).
 3. Copy the invite code into Sam's wallet and accept.
-4. Both wallets land on the same result. Alex and Sam share **CFTR** (cystic fibrosis). Open **Privacy details** to see exactly what each party — you, your partner, the relay, the counselor — actually saw.
+4. Both wallets land on the same result. Alex and Sam share **CFTR**, **GBA**, and **PAH** (cystic fibrosis, Gaucher disease, and phenylketonuria). Open **Privacy details** to see exactly what each party — you, your partner, the relay, the counselor — actually saw.
 
 **Trial eligibility**
 

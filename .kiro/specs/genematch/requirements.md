@@ -91,7 +91,7 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 
 #### Acceptance Criteria
 1. THE wallet SHALL offer a "What did everyone see?" panel listing, per party (Alex, Sam, relay, agent), the data it received, with points shown as 8-character hex prefixes.
-2. THE seed script SHALL create three demo couples: one shared carrier gene, no shared genes, and two shared genes.
+2. THE seed script SHALL create three demo couples: three shared carrier genes, no shared genes, and two shared genes.
 3. WHEN run locally THE SYSTEM SHALL complete a full check in under 3 seconds of compute, excluding the LLM call.
 4. THE UI SHALL display a persistent banner: "Demo with synthetic data. Not medical advice."
 
@@ -147,6 +147,7 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 4. Sessions SHALL use HttpOnly, SameSite=Lax cookies with a per-wallet cookie name, expire after 8 hours, and be invalidated on sign-out.
 5. Every wallet API endpoint and the app page, including trial approval, SHALL require a session; unauthenticated API calls get 401 and the app page redirects to sign-in, preserving a pending trial request.
 6. Accounts SHALL hold no genetic data.
+7. WHEN a check completes THE wallet SHALL save only the latest completed result, its explanation, and its redacted privacy-details snapshot in that person's local wallet file. On a later sign-in, including after a wallet-process restart, THE app SHALL open that latest result unless an active check or a trial/Connect deep link takes priority. Sign-out SHALL NOT delete the saved result. Session secrets and full protocol points SHALL NOT be persisted.
 
 ### Requirement 13: Design and accessibility
 

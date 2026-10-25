@@ -1,13 +1,15 @@
 {
   "person_id": "sam",
-  "genes": ["CFTR", "HEXA"],
+  "genes": ["CFTR", "GBA", "HEXA", "PAH"],
   "credential": {
     "person_id": "sam",
     "tokens": [
       "<redacted 32-byte Ristretto point for CFTR>",
-      "<redacted 32-byte Ristretto point for HEXA>"
+      "<redacted 32-byte Ristretto point for GBA>",
+      "<redacted 32-byte Ristretto point for HEXA>",
+      "<redacted 32-byte Ristretto point for PAH>"
     ],
-    "count": 2,
+    "count": 4,
     "commitment": "<redacted SHA-256 commitment>",
     "issued_at": "<UTC timestamp>",
     "lab_sig": "<redacted Ed25519 signature>",

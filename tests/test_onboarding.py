@@ -227,7 +227,7 @@ def test_connect_works_for_empty_wallet(tmp_path, monkeypatch):
         return cb, (await w.get("/me")).json()
     cb, me = asyncio.run(go())
     assert cb.headers["location"] == "/app#results-added"
-    assert me["has_results"] is True and me["genes"] == ["CFTR", "HEXA"]
+    assert me["has_results"] is True and me["genes"] == ["CFTR", "GBA", "HEXA", "PAH"]
 
 
 def test_connect_declined_changes_nothing(var):
@@ -649,7 +649,7 @@ def test_valid_file_needs_confirmation_then_replaces(var):
 
 
 def test_uploaded_file_works_in_a_full_check_against_seeded_partner(var):
-    """Custom alex [HEXA, PAH] vs seeded sam [CFTR, HEXA] -> shared HEXA."""
+    """Custom alex [HEXA, PAH] vs seeded sam [CFTR, GBA, HEXA, PAH] -> two shared."""
     async def go():
         relay_c = httpx.AsyncClient(transport=httpx.ASGITransport(app=relay.app), base_url="http://relay")
         wa = signed_in_client(create_app("alex", relay_c), "http://alex")
@@ -669,8 +669,9 @@ def test_uploaded_file_works_in_a_full_check_against_seeded_partner(var):
             results[mode] = st
         return results
     res = run(go())
-    assert res["detail"]["state"] == "done" and res["detail"]["result"]["shared_genes"] == ["HEXA"]
-    assert res["count"]["result"]["shared_count"] == 1
+    assert res["detail"]["state"] == "done"
+    assert res["detail"]["result"]["shared_genes"] == ["HEXA", "PAH"]
+    assert res["count"]["result"]["shared_count"] == 2
 
 
 def _tamper_genes(data: bytes) -> bytes:

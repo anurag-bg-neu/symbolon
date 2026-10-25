@@ -224,7 +224,7 @@ def test_check_completes_without_the_counselor(var, monkeypatch):
         seen = (await wa.get("/check/seen")).json()
         return st, seen
     st, seen = asyncio.run(go())
-    assert st["state"] == "done" and st["result"]["shared_genes"] == ["CFTR"]
+    assert st["state"] == "done" and st["result"]["shared_genes"] == ["CFTR", "GBA", "PAH"]
     assert st["explanation"] is None
     agent = next(p for p in seen["parties"] if p["party"] == "agent")
     assert agent["items"] == []

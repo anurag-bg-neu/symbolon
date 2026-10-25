@@ -7,7 +7,7 @@
   "haplotypes": 2,
   "total_bases": 6176572802,
   "simulated_lab_interpretations": {
-    "carrier_genes": ["CFTR", "HEXA"],
+    "carrier_genes": ["CFTR", "GBA", "HEXA", "PAH"],
     "trial_findings": []
   },
   "notice": "Synthetic demo fixture only. Interpretations are deliberate labels for the GeneMatch scenario, are not inferred from the generated bases, and do not describe a real person or clinical variant."

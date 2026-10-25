@@ -36,7 +36,7 @@ from lab import keys  # noqa: E402
 from relay import service as relay  # noqa: E402
 from wallet.service import create_app  # noqa: E402
 
-EXPECTED = {1: ["CFTR"], 2: [], 3: ["HBB", "SMN1"]}
+EXPECTED = {1: ["CFTR", "GBA", "PAH"], 2: [], 3: ["HBB", "SMN1"]}
 GENES = {e["gene"] for e in keys.load_panel()}
 failures: list[str] = []
 
