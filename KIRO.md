@@ -14,7 +14,29 @@ Symbolon was built in one day with **Kiro IDE**. Our strategy was to write the s
 
 ## Tools
 
-We used **Kiro IDE** for all development: spec authoring, task execution, steering, and the agent hook. We did not use the Kiro CLI, Web, or Crew, nor any MCP servers or Kiro powers in this build. Our dependencies (libsodium bindings, PyNaCl, FastAPI) didn't need outside tooling. We spent our Kiro time on specs, steering, and the hook.
+We used **Kiro IDE** for all development: spec authoring, task execution, steering, and the agent hook. We did not use the Kiro CLI, Web, or Crew, or any Kiro powers. We spent most of our Kiro time on specs, steering, and the hook.
+
+## MCP
+
+We extend Kiro with the **GitHub MCP server** (GitHub's hosted server). It lets Kiro read this repo's commits, branches, pull requests, and issues directly, which matters for a team merging several branches on a deadline. We run it **read-only** (`X-MCP-Readonly`), so Kiro can inspect GitHub but can't push, merge, or close anything.
+
+The config lives in each developer's Kiro MCP settings (`.kiro/settings/mcp.json`), not in the repo, so no token is ever committed. Kiro fills in `${GITHUB_PERSONAL_ACCESS_TOKEN}` from your environment:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}",
+        "X-MCP-Readonly": "true"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
 
 ## Spec-driven development
 
