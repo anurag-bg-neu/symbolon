@@ -1,4 +1,4 @@
-/* Symbolon: calm and spacious. Blues and greys with one accent, no alarm colours.
+/* Symbolon: calm and spacious. Blues and greys with restrained semantic result colours.
    Text contrast is at least 4.5:1. Motion is subtle and off under reduced motion. */
 :root {
   --bg: #fbfbfd;
@@ -10,6 +10,9 @@
   --accent-ink: #ffffff;
   --soft: #eef5fa;
   --done: #2f6f5e;
+  --result-clear-bg: #edf8f4;
+  --result-shared: #8f2f2f;
+  --result-shared-bg: #fdf1f1;
   --notice-bg: #fff6e0;
   --notice-line: #b7891f;
   --radius: 18px;
@@ -213,7 +216,21 @@ details.explain > summary { cursor: pointer; color: var(--accent); font-size: 0.
 
 /* Result */
 .result .mode { background: var(--soft); border-radius: 12px; padding: 10px 14px; }
-.result .answer { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; margin: 16px 0 8px; }
+.result-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 7px 12px;
+  margin: 16px 0 12px;
+  font-weight: 700;
+}
+.result-status-icon { flex: none; font-size: 1.05rem; line-height: 1; }
+.result-status-clear { color: var(--done); background: var(--result-clear-bg); }
+.result-status-shared { color: var(--result-shared); background: var(--result-shared-bg); }
 
 /* Privacy details: three plain lines, technical transcript behind a toggle */
 .privacy-lines { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }

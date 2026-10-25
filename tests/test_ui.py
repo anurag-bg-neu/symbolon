@@ -60,7 +60,8 @@ def test_javascript_parses(script):
 @pytest.mark.parametrize("css", CSS, ids=lambda p: p.parent.parent.name)
 def test_calm_palette(css):
     src = css.read_text("utf-8").lower()
-    assert not re.search(r"\bred\b|crimson|#f00\b|#ff0000", src)
+    # Restrained semantic status colours are allowed; bright alarm colours are not.
+    assert not re.search(r"crimson|#f00\b|#ff0000", src)
 
 
 def test_counselor_is_optional_in_the_ui():
@@ -160,9 +161,15 @@ def test_landing_page_content():
 
 def test_result_screen_states_the_mode_and_trial_names_requester():
     app_js = (ROOT / "wallet" / "static" / "app.js").read_text("utf-8")
+    styles = (ROOT / "wallet" / "static" / "styles.css").read_text("utf-8")
     assert "Count mode: you both agreed to learn only the number" in app_js
     assert "is asking to verify your" in app_js
     assert "What won't be shared" in app_js
+    # Result status uses text, symbol, and restrained semantic colour—not colour alone.
+    assert "result-status-clear" in app_js and "result-status-shared" in app_js
+    assert '"aria-hidden": "true"' in app_js and 'clear ? "✓" : "!"' in app_js
+    assert "on the tested panel" in app_js and "not zero risk" in app_js
+    assert "--result-clear-bg" in styles and "--result-shared" in styles
 
 
 # --- served pages and the backend without the counselor ------------------------

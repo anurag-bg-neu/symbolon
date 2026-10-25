@@ -151,7 +151,7 @@ GeneMatch lets two partners learn whether they both carry a harmful variant in t
 
 ### Requirement 13: Design and accessibility
 
-1. Calm, Apple-inspired design: generous whitespace, large headlines, short sentences, one accent colour, the system font stack, without copying Apple's logos, images, names, or layouts.
+1. Calm, Apple-inspired design: generous whitespace, large headlines, short sentences, one primary accent colour with restrained semantic colours for result status, the system font stack, without copying Apple's logos, images, names, or layouts.
 2. Motion SHALL be subtle (fade or slide on reveal) and disabled under `prefers-reduced-motion`. Layouts SHALL work down to phone width.
-3. Labels on inputs, visible focus, `aria-live` status, focus moved on screen change, and sufficient contrast SHALL be kept. Results stay calm: no red, no alarm icons, no verdict on marriage or children.
+3. Labels on inputs, visible focus, `aria-live` status, focus moved on screen change, and sufficient contrast SHALL be kept. Results SHALL use a compact green check with explicit no-shared-gene text when no carrier genes are shared, and a compact restrained-red alert marker with explicit shared-gene text when one or more are shared. Colour SHALL NOT be the only status cue. Results SHALL remain non-diagnostic and SHALL give no verdict on marriage or children.
 4. Synthetic data SHALL be labelled wherever it appears (wallet home, lab pages, lab files).

@@ -564,13 +564,21 @@
   function resultCard(st) {
     var r = st.result;
     var n = r.shared_count;
-    var kids = [el("p", { class: "mode", text: MODE_ON_RESULT[r.mode] })];
-    if (n === 0) {
-      kids.push(el("p", { class: "answer", text: "You don't share a carrier gene on the tested panel." }));
+    var clear = n === 0;
+    var answer = clear
+      ? "You don't share a carrier gene on the tested panel."
+      : "You share " + plural(n, "carrier gene") + ".";
+    var kids = [
+      el("p", { class: "mode", text: MODE_ON_RESULT[r.mode] }),
+      el("p", { class: "result-status " + (clear ? "result-status-clear" : "result-status-shared") }, [
+        el("span", { class: "result-status-icon", "aria-hidden": "true", text: clear ? "✓" : "!" }),
+        el("span", { text: answer })
+      ])
+    ];
+    if (clear) {
       kids.push(el("p", { text: "This means lower risk for the tested conditions, not zero risk. Conditions that weren't tested aren't covered by this result." }));
       kids.push(el("p", { text: "A genetic counselor can answer questions about untested conditions or your family history." }));
     } else {
-      kids.push(el("p", { class: "answer", text: "You share " + plural(n, "carrier gene") + "." }));
       if (r.shared_genes && r.shared_genes.length) {
         kids.push(el("ul", { class: "chips" }, r.shared_genes.map(function (g) { return el("li", { class: "chip", text: g }); })));
       }
@@ -600,7 +608,7 @@
       button("Home", showHome, "secondary")
     ]));
     screen("Done.", [col]);
-    announce("Done. " + (st.result.shared_count === 0 ? "No shared carrier genes." : "Shared carrier genes: " + st.result.shared_count + "."));
+    announce("Done. " + (st.result.shared_count === 0 ? "No shared carrier genes on the tested panel." : "Shared carrier genes: " + st.result.shared_count + "."));
   }
 
   function showFailed(error) {
